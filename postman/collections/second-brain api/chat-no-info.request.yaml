@@ -1,0 +1,29 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/chat'
+order: 8000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "sessionId": "postman-nohit",
+      "question": "法国的首都是哪座城市？"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('no-info chat: status 200', () => pm.response.to.have.status(200));
+      const body = pm.response.text();
+      const answer = (body.match(/event: ?message\r?\ndata: ?([^\r\n]*)/g) || [])
+        .map(line => line.replace(/^event: ?message\r?\ndata: ?/, ''))
+        .join('');
+      pm.test('no-info chat: answer declines instead of hallucinating', () => {
+        pm.expect(answer).to.include('没有');
+      });
+      pm.test('no-info chat: still returns done frame', () => {
+        pm.expect(body).to.match(/event: ?done/);
+      });

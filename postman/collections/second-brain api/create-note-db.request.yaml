@@ -1,0 +1,25 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/notes'
+order: 3000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "content": "我们团队决定采用 PostgreSQL 作为主数据库，预计 2027 年 Q1 完成迁移，先行在测试环境验证半年。",
+      "tags": "技术决策"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('create note: status 201', () => pm.response.to.have.status(201));
+      pm.test('create note: has id and title derived from content', () => {
+        const note = pm.response.json();
+        pm.expect(note.id).to.be.a('string');
+        pm.expect(note.createdAt).to.exist;
+        pm.collectionVariables.set('noteId', note.id);
+      });

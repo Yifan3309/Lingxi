@@ -1,0 +1,12 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/notes'
+order: 5000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('list notes: status 200', () => pm.response.to.have.status(200));
+      pm.test('list notes: at least the 2 created notes', () => {
+        pm.expect(pm.response.json()).to.have.lengthOf.at.least(2);
+      });

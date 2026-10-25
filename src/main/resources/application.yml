@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: second-brain
+  mvc:
+    async:
+      request-timeout: 180000   # SSE 长连接超时（毫秒）
+  datasource:
+    url: jdbc:h2:file:./data/notes;MODE=PostgreSQL;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+# 模型接入：改 provider 字段即可整体切换（openai-compatible | ollama），无需改代码。
+# openai-compatible 适配一切 OpenAI 兼容端点：智谱 GLM、DeepSeek、vLLM 等，换 base-url 即可。
+# 密钥从环境变量 LLM_API_KEY 读取；也可以直接把值写进 api-key（不要提交到 git）。
+app:
+  rag:
+    top-k: 5                          # 每次问答召回的笔记分块数
+    store-path: data/embeddings.json  # 向量库文件持久化位置
+    chunk-target-chars: 300           # 分块目标长度（字符）。E5 上限 512 token，中文约 1.3 token/字，300 安全；换 BGE/qwen3 可调回 500-800
+    query-prefix: 'query: '           # E5 要求查询侧加 "query: "；换 BGE/qwen3-embedding 时置空 ''
+    passage-prefix: 'passage: '       # E5 要求文档侧加 "passage: "；换 BGE/qwen3-embedding 时置空 ''
+  ai:
+    chat:
+      provider: openai-compatible
+      openai-compatible:
+        base-url: https://open.bigmodel.cn/api/paas/v4   # 智谱；DeepSeek 换 https://api.deepseek.com/v1
+        api-key: ${LLM_API_KEY_demo_glm_4_7_flash}
+        chat-model: glm-4-flash
+        temperature: 0.7
+        timeout: 60s
+      ollama:
+        base-url: http://localhost:11434
+        chat-model: qwen3:8b
+        temperature: 0.7
+        timeout: 120s
+    embedding:
+      provider: onnx   # onnx = 本地模型，无需网络与密钥；最终态换 ollama
+      onnx:
+        model-path: models/embedding/Multilingual-E5-small/model.onnx
+        tokenizer-path: models/embedding/Multilingual-E5-small/tokenizer.json
+        pooling-mode: MEAN
+      openai-compatible:
+        base-url: https://open.bigmodel.cn/api/paas/v4
+        api-key: ${LLM_API_KEY:demo}
+        embedding-model: embedding-3
+        timeout: 60s
+      ollama:
+        base-url: http://localhost:11434
+        embedding-model: nomic-embed-text
+        timeout: 120s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    dev.langchain4j: INFO

@@ -1,0 +1,25 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/notes'
+order: 4000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "title": "LangChain4j 学习笔记",
+      "content": "# RAG\n检索增强生成：先从笔记库检索相关片段，再把片段放进 prompt 让模型基于它回答，回答需标注来源。\n\n# 分块\n长文档先切分再嵌入，块目标 300 到 500 token，标题路径作为块前缀可以显著提升检索命中。\n\n# 记忆\nAiServices 通过 ChatMemoryProvider 实现多轮上下文，按 sessionId 隔离。",
+      "tags": "学习"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('create markdown note: status 201', () => pm.response.to.have.status(201));
+      pm.test('create markdown note: has id', () => {
+        const note = pm.response.json();
+        pm.expect(note.id).to.be.a('string');
+        pm.collectionVariables.set('markdownNoteId', note.id);
+      });

@@ -1,0 +1,17 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/notes?keyword=PostgreSQL'
+order: 6000
+queryParams:
+  - key: keyword
+    value: PostgreSQL
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('search notes: status 200', () => pm.response.to.have.status(200));
+      pm.test('search notes: keyword hits the db note', () => {
+        const notes = pm.response.json();
+        pm.expect(notes).to.have.lengthOf.at.least(1);
+        pm.expect(notes[0].content).to.include('PostgreSQL');
+      });

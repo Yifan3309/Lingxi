@@ -1,0 +1,32 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/chat'
+order: 11000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "sessionId": "postman-after-update",
+      "question": "我们现在用什么数据库？"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('chat after update: status 200', () => pm.response.to.have.status(200));
+      const body = pm.response.text();
+      const answer = (body.match(/event: ?message\r?\ndata: ?([^\r\n]*)/g) || [])
+        .map(line => line.replace(/^event: ?message\r?\ndata: ?/, ''))
+        .join('');
+      pm.test('chat after update: answer reflects new content (MySQL)', () => {
+        pm.expect(answer).to.include('MySQL');
+      });
+      pm.test('chat after update: done frame source points at updated note', () => {
+        const doneMatch = body.match(/event: ?done\r?\ndata: ?(.+)/);
+        pm.expect(doneMatch, 'done frame present').to.exist;
+        const done = JSON.parse(doneMatch[1]);
+        pm.expect(done.sources.map(s => s.noteId)).to.include(pm.collectionVariables.get('noteId'));
+      });

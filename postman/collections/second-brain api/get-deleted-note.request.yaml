@@ -1,0 +1,9 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/notes/{{noteId}}'
+order: 14000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('get deleted note: status 404', () => pm.response.to.have.status(404));

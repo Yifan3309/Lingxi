@@ -1,0 +1,9 @@
+$kind: http-request
+method: DELETE
+url: '{{baseUrl}}/api/notes/{{markdownNoteId}}'
+order: 13000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('delete markdown note: status 204', () => pm.response.to.have.status(204));

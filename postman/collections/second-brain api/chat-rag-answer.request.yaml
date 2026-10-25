@@ -1,0 +1,44 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/chat'
+order: 7000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "sessionId": "postman-suite",
+      "question": "我们打算用什么数据库？"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('rag chat: status 200', () => pm.response.to.have.status(200));
+      const body = pm.response.text();
+      pm.test('rag chat: SSE has message frames and done frame', () => {
+        pm.expect(body).to.include('event:message') || pm.expect(body).to.include('event: message');
+        pm.expect(body).to.match(/event: ?done/);
+      });
+      pm.test('rag chat: no error frame', () => {
+        pm.expect(body).to.not.match(/event: ?error/);
+      });
+      // 拼接全部 message 增量还原回答文本（Spring 的 SSE 帧可能带或不带冒号后空格）
+      const answer = (body.match(/event: ?message\r?\ndata: ?([^\r\n]*)/g) || [])
+        .map(line => line.replace(/^event: ?message\r?\ndata: ?/, ''))
+        .join('');
+      pm.test('rag chat: answer grounded in notes (mentions PostgreSQL)', () => {
+        pm.expect(answer).to.include('PostgreSQL');
+      });
+      pm.test('rag chat: done frame has finishReason and source pointing at created note', () => {
+        const doneMatch = body.match(/event: ?done\r?\ndata: ?(.+)/);
+        pm.expect(doneMatch, 'done frame present').to.exist;
+        const done = JSON.parse(doneMatch[1]);
+        pm.expect(done.finishReason, 'finishReason present').to.exist;
+        pm.expect(done.sources).to.be.an('array').with.lengthOf.at.least(1);
+        pm.expect(done.sources.map(s => s.noteId)).to.include(pm.collectionVariables.get('noteId'));
+        pm.expect(done.sources[0]).to.have.property('score');
+        pm.expect(done.sources[0].excerpt).to.be.a('string').and.not.be.empty;
+      });

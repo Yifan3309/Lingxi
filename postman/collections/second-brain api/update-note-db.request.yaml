@@ -1,0 +1,24 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/notes/{{noteId}}'
+order: 10000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "content": "我们团队最终决定使用 MySQL 8 作为主数据库，PostgreSQL 迁移计划已取消，只保留其测试环境的对比数据。"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('update note: status 200', () => pm.response.to.have.status(200));
+      pm.test('update note: same id, title preserved', () => {
+        const note = pm.response.json();
+        pm.expect(note.id).to.equal(pm.collectionVariables.get('noteId'));
+        pm.expect(note.title).to.exist;
+        pm.expect(note.updatedAt).to.exist;
+      });

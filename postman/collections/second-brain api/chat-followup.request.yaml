@@ -1,0 +1,26 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/chat'
+order: 9000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "sessionId": "postman-suite",
+      "question": "那预计什么时候完成？"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('follow-up chat: status 200', () => pm.response.to.have.status(200));
+      const body = pm.response.text();
+      const answer = (body.match(/event: ?message\r?\ndata: ?([^\r\n]*)/g) || [])
+        .map(line => line.replace(/^event: ?message\r?\ndata: ?/, ''))
+        .join('');
+      pm.test('follow-up chat: remembers prior turn (answers 2027)', () => {
+        pm.expect(answer).to.include('2027');
+      });

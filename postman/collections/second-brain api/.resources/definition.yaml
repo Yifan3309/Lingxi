@@ -1,0 +1,6 @@
+$kind: collection
+description: 第二大脑 M1 接口验收集：健康检查 → 笔记 CRUD → RAG 问答带来源 → 多轮上下文 → 改/删闭环。按 order 顺序整体运行即可完成验收。
+variables:
+  baseUrl: http://localhost:8080
+  noteId: ""
+  markdownNoteId: ""
