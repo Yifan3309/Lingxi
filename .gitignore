@@ -59,3 +59,5 @@ reranker-service/*.log
 
 ### ZCode local session artifacts ###
 .zcode/
+### Tauri desktop shell ###
+src-tauri/target/
