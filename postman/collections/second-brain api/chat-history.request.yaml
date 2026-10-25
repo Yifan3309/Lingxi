@@ -1,0 +1,25 @@
+$kind: http-request
+name: 'chat history persisted'
+method: GET
+url: '{{baseUrl}}/api/chat/sessions/postman-suite/messages'
+order: 9700
+description: M2 会话落库验收。postman-suite 会话此前有两次问答（order 7000 首问、9000 追问），落库后应有 4 条消息（user/assistant 交替），assistant 消息带 refs 与 token 统计。
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('chat history: status 200', () => pm.response.to.have.status(200));
+      const messages = pm.response.json();
+      pm.test('chat history: both turns persisted (4 messages)', () => {
+        pm.expect(messages).to.be.an('array').with.lengthOf.at.least(4);
+      });
+      pm.test('chat history: roles alternate starting with user', () => {
+        pm.expect(messages[0].role).to.equal('user');
+        const roles = messages.map(m => m.role);
+        pm.expect(roles).to.include('assistant');
+      });
+      pm.test('chat history: assistant message carries refs and token usage', () => {
+        const assistant = messages.find(m => m.role === 'assistant');
+        pm.expect(assistant.refs, 'refs JSON of sources').to.be.a('string').and.not.be.empty;
+        pm.expect(assistant.tokensOut, 'output token count').to.be.at.least(1);
+      });

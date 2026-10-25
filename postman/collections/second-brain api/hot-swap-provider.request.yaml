@@ -1,0 +1,42 @@
+$kind: http-request
+name: 'hot-swap provider (switch + self-restore)'
+method: POST
+url: '{{baseUrl}}/api/admin/config'
+order: 2150
+description: provider 级热切换：切到 ollama（断言生效回显走 ollama 默认值——切换语义会清空旧覆盖）→ 再切回 openai-compatible 自恢复。注意：本测试会把运行时覆盖重置为 yml 默认（chat=glm-4-flash），自定义的模型/地址/密钥覆盖如需保留请测试后重设。
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "chat": { "provider": "ollama" }
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('swap to ollama: status 200', () => pm.response.to.have.status(200));
+      const cfg = pm.response.json();
+      pm.test('swap to ollama: effective provider/baseUrl/model from yml defaults', () => {
+        pm.expect(cfg.chat.provider).to.equal('ollama');
+        pm.expect(cfg.chat.baseUrl).to.equal('http://localhost:11434');
+        pm.expect(cfg.chat.model).to.equal('qwen3:8b');
+        pm.expect(cfg.chat.overridden).to.be.true;
+        pm.expect(cfg.chat.providers).to.include('openai-compatible');
+      });
+      pm.test('swap to ollama: no apiKey leaked for ollama', () => {
+        pm.expect(cfg.chat.apiKey).to.be.undefined;
+      });
+      pm.sendRequest({
+        url: pm.variables.replaceIn('{{baseUrl}}/api/admin/config'),
+        method: 'POST',
+        header: { 'Content-Type': 'application/json' },
+        body: { mode: 'raw', raw: JSON.stringify({ chat: { provider: 'openai-compatible' } }) }
+      }, (err, resp) => {
+        pm.test('restore to openai-compatible', () => {
+          pm.expect(err).to.be.null;
+          pm.expect(resp.json().chat.provider).to.equal('openai-compatible');
+        });
+      });

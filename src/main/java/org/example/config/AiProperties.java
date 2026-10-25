@@ -2,6 +2,7 @@ package org.example.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
+import org.springframework.lang.Nullable;
 
 import java.time.Duration;
 
@@ -14,7 +15,7 @@ import java.time.Duration;
  * 与 ollama（本地）之间切换，无需改代码。
  */
 @ConfigurationProperties(prefix = "app.ai")
-public record AiProperties(Chat chat, @DefaultValue Embedding embedding) {
+public record AiProperties(Chat chat, @DefaultValue Embedding embedding, @DefaultValue Vision vision) {
 
     public record Chat(
             @DefaultValue("openai-compatible") String provider,
@@ -51,5 +52,16 @@ public record AiProperties(Chat chat, @DefaultValue Embedding embedding) {
             @DefaultValue("models/embedding/Multilingual-E5-small/model.onnx") String modelPath,
             @DefaultValue("models/embedding/Multilingual-E5-small/tokenizer.json") String tokenizerPath,
             @DefaultValue("MEAN") String poolingMode) {
+    }
+
+    /**
+     * 视觉模型（图片/扫描 PDF 文字提取），走 OpenAI 兼容端点。
+     * base-url/api-key 为 null = 继承 chat 的 openai-compatible 配置。
+     */
+    public record Vision(
+            @DefaultValue("glm-4v-flash") String model,
+            @Nullable String baseUrl,
+            @Nullable String apiKey,
+            @DefaultValue("120s") Duration timeout) {
     }
 }

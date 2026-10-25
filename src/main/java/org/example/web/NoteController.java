@@ -1,8 +1,10 @@
 package org.example.web;
 
 import org.example.domain.Note;
+import org.example.rag.SemanticSearchService;
 import org.example.service.NoteService;
 import org.example.web.dto.NoteRequest;
+import org.example.web.dto.RelatedNote;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,9 +28,11 @@ import java.util.List;
 public class NoteController {
 
     private final NoteService noteService;
+    private final SemanticSearchService semanticSearchService;
 
-    public NoteController(NoteService noteService) {
+    public NoteController(NoteService noteService, SemanticSearchService semanticSearchService) {
         this.noteService = noteService;
+        this.semanticSearchService = semanticSearchService;
     }
 
     @PostMapping
@@ -50,6 +54,13 @@ public class NoteController {
     @GetMapping("/{id}")
     public Note get(@PathVariable String id) {
         return noteService.get(id);
+    }
+
+    /** 语义相关笔记推荐（M2）：基于向量相似度，排除自身，按笔记去重。 */
+    @GetMapping("/{id}/related")
+    public List<RelatedNote> related(@PathVariable String id) {
+        Note note = noteService.get(id);
+        return semanticSearchService.relatedNotes(note.getId(), note.getTitle(), note.getContent(), 5);
     }
 
     @PutMapping("/{id}")

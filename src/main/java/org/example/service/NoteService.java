@@ -1,5 +1,6 @@
 package org.example.service;
 
+import org.example.config.EnrichProperties;
 import org.example.domain.Note;
 import org.example.rag.NoteIngestService;
 import org.example.repository.NoteRepository;
@@ -24,23 +25,34 @@ public class NoteService {
 
     private final NoteRepository noteRepo;
     private final NoteIngestService ingestService;
+    private final NoteEnrichService enrichService;
+    private final EnrichProperties enrichProps;
 
-    public NoteService(NoteRepository noteRepo, NoteIngestService ingestService) {
+    public NoteService(NoteRepository noteRepo,
+                       NoteIngestService ingestService,
+                       NoteEnrichService enrichService,
+                       EnrichProperties enrichProps) {
         this.noteRepo = noteRepo;
         this.ingestService = ingestService;
+        this.enrichService = enrichService;
+        this.enrichProps = enrichProps;
     }
 
     public Note create(NoteRequest request) {
+        return create(request, "manual");
+    }
+
+    /** 指定来源的创建（manual/import/vision，多模态导入用）。 */
+    public Note create(NoteRequest request, String source) {
         Note note = new Note();
         note.setTitle(resolveTitle(request));
         note.setContent(request.content());
         note.setTags(request.tags());
+        note.setFolder(normalizeFolder(request.folder()));
+        note.setSource(source);
         note = noteRepo.save(note);
-        try {
-            ingestService.ingest(note);
-        } catch (Exception e) {
-            log.error("笔记 {} 嵌入入库失败，已保存但暂不可语义检索", note.getId(), e);
-        }
+        ingestQuietly(note);
+        enrichQuietly(note);
         return note;
     }
 
@@ -55,12 +67,12 @@ public class NoteService {
         if (request.tags() != null) {
             note.setTags(request.tags());
         }
-        note = noteRepo.save(note);
-        try {
-            ingestService.ingest(note);
-        } catch (Exception e) {
-            log.error("笔记 {} 重新嵌入失败，向量保持旧版本", id, e);
+        if (request.folder() != null) {
+            note.setFolder(normalizeFolder(request.folder()));
         }
+        note = noteRepo.save(note);
+        ingestQuietly(note);
+        enrichQuietly(note);
         return note;
     }
 
@@ -91,6 +103,33 @@ public class NoteService {
                     .toList();
         }
         return notes;
+    }
+
+    /** 文件夹名规范化：去首尾空白，空白视为未归类（null）。 */
+    private static String normalizeFolder(String folder) {
+        if (folder == null) {
+            return null;
+        }
+        String f = folder.trim();
+        return f.isEmpty() ? null : f;
+    }
+
+    private void ingestQuietly(Note note) {        try {
+            ingestService.ingest(note);
+        } catch (Exception e) {
+            log.error("笔记 {} 嵌入入库失败，已保存但暂不可语义检索", note.getId(), e);
+        }
+    }
+
+    private void enrichQuietly(Note note) {
+        if (!enrichProps.enabled()) {
+            return;
+        }
+        try {
+            enrichService.enrich(note.getId());
+        } catch (Exception e) {
+            log.warn("笔记 {} 富化任务提交失败：{}", note.getId(), String.valueOf(e.getMessage()));
+        }
     }
 
     private Note findOr404(String id) {

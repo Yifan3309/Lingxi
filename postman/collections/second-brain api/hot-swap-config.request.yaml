@@ -1,0 +1,32 @@
+$kind: http-request
+name: 'hot-swap model config'
+method: POST
+url: '{{baseUrl}}/api/admin/config'
+order: 2100
+description: 模型热切换（无需重启）：POST 运行时覆盖（持久化 data/runtime-config.json）。此请求把 chat 模型设为当前值（无副作用），断言接口连通与生效回显。
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "chat": { "model": "glm-4-flash" },
+      "vision": { "model": "glm-4v-flash" }
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('hot-swap: status 200', () => pm.response.to.have.status(200));
+      const cfg = pm.response.json();
+      pm.test('hot-swap: chat model applied', () => {
+        pm.expect(cfg.chat.model).to.equal('glm-4-flash');
+        pm.expect(cfg.chat.overridden).to.be.true;
+      });
+      pm.test('hot-swap: vision model applied', () => {
+        pm.expect(cfg.vision.model).to.equal('glm-4v-flash');
+      });
+      pm.test('hot-swap: embedding not swappable (R1 guard noted)', () => {
+        pm.expect(cfg.embedding.note).to.include('重嵌入');
+      });

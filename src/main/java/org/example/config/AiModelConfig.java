@@ -17,64 +17,65 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 
 /**
- * 按 app.ai.* 配置装配模型 Bean（M0）。
- * 业务代码只依赖 ChatModel / StreamingChatModel / EmbeddingModel 接口，
- * 切换 provider 仅需改配置文件后重启。
+ * 按 app.ai.* 配置 + 运行时覆盖（RuntimeModelConfig）装配模型 Bean。
+ * chat/streaming/vision 包在 SwappableModels 里：前端改配置后仅替换内部委托，无需重启。
  */
 @Configuration
 public class AiModelConfig {
 
     @Bean
-    public ChatModel chatModel(AiProperties props, TokenUsageLoggingListener listener) {
-        AiProperties.Chat cfg = props.chat();
+    public SwappableModels.Chat chatModel(AiProperties props,
+                                          RuntimeModelConfig runtime,
+                                          TokenUsageLoggingListener listener) {
         List<ChatModelListener> listeners = List.of(listener);
-        return switch (cfg.provider()) {
-            case "openai-compatible" -> OpenAiChatModel.builder()
-                    .baseUrl(cfg.openaiCompatible().baseUrl())
-                    .apiKey(cfg.openaiCompatible().apiKey())
-                    .modelName(cfg.openaiCompatible().chatModel())
-                    .temperature(cfg.openaiCompatible().temperature())
-                    .timeout(cfg.openaiCompatible().timeout())
-                    .listeners(listeners)
-                    .build();
-            case "ollama" -> OllamaChatModel.builder()
-                    .baseUrl(cfg.ollama().baseUrl())
-                    .modelName(cfg.ollama().chatModel())
-                    .temperature(cfg.ollama().temperature())
-                    .timeout(cfg.ollama().timeout())
-                    .listeners(listeners)
-                    .build();
+        String provider = runtime.effectiveChatProvider(props.chat().provider());
+        ChatModel concrete = switch (provider) {
+            case "openai-compatible" -> openAiChat(effectiveChat(props, runtime), listeners);
+            case "ollama" -> ollamaChat(effectiveChat(props, runtime), listeners);
             default -> throw new IllegalStateException(
-                    "未知的 app.ai.chat.provider: " + cfg.provider() + "，支持 openai-compatible / ollama");
+                    "未知的 app.ai.chat.provider: " + provider + "，支持 openai-compatible / ollama");
         };
+        return new SwappableModels.Chat(concrete);
     }
 
     @Bean
-    public StreamingChatModel streamingChatModel(AiProperties props, TokenUsageLoggingListener listener) {
-        AiProperties.Chat cfg = props.chat();
+    public SwappableModels.Streaming streamingChatModel(AiProperties props,
+                                                        RuntimeModelConfig runtime,
+                                                        TokenUsageLoggingListener listener) {
         List<ChatModelListener> listeners = List.of(listener);
-        return switch (cfg.provider()) {
-            case "openai-compatible" -> OpenAiStreamingChatModel.builder()
-                    .baseUrl(cfg.openaiCompatible().baseUrl())
-                    .apiKey(cfg.openaiCompatible().apiKey())
-                    .modelName(cfg.openaiCompatible().chatModel())
-                    .temperature(cfg.openaiCompatible().temperature())
-                    .timeout(cfg.openaiCompatible().timeout())
-                    .listeners(listeners)
-                    .build();
-            case "ollama" -> OllamaStreamingChatModel.builder()
-                    .baseUrl(cfg.ollama().baseUrl())
-                    .modelName(cfg.ollama().chatModel())
-                    .temperature(cfg.ollama().temperature())
-                    .timeout(cfg.ollama().timeout())
-                    .listeners(listeners)
-                    .build();
+        String provider = runtime.effectiveChatProvider(props.chat().provider());
+        StreamingChatModel concrete = switch (provider) {
+            case "openai-compatible" -> openAiStreaming(effectiveChat(props, runtime), listeners);
+            case "ollama" -> ollamaStreaming(effectiveChat(props, runtime), listeners);
             default -> throw new IllegalStateException(
-                    "未知的 app.ai.chat.provider: " + cfg.provider() + "，支持 openai-compatible / ollama");
+                    "未知的 app.ai.chat.provider: " + provider + "，支持 openai-compatible / ollama");
         };
+        return new SwappableModels.Streaming(concrete);
+    }
+
+    @Bean
+    public SwappableModels.Chat visionChatModel(AiProperties props,
+                                                RuntimeModelConfig runtime,
+                                                TokenUsageLoggingListener listener) {
+        AiProperties.Vision v = props.vision();
+        AiProperties.OpenAiCompatible chat = props.chat().openaiCompatible();
+        // 生效值：运行时覆盖 > vision 配置 > chat 配置
+        String baseUrl = firstNonBlank(runtime.chatBaseUrl(), v.baseUrl(), chat.baseUrl());
+        String apiKey = firstNonBlank(runtime.chatApiKey(), v.apiKey(), chat.apiKey());
+        String model = firstNonBlank(runtime.visionModel(), v.model());
+        List<ChatModelListener> listeners = List.of(listener);
+        ChatModel concrete = OpenAiChatModel.builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .modelName(model)
+                .timeout(v.timeout())
+                .listeners(listeners)
+                .build();
+        return new SwappableModels.Chat(concrete);
     }
 
     @Bean
@@ -100,5 +101,73 @@ public class AiModelConfig {
                     "未知的 app.ai.embedding.provider: " + cfg.provider() + "，支持 openai-compatible / ollama / onnx");
         };
     }
-}
 
+    /* ---- 生效配置计算：运行时覆盖 > yml ---- */
+
+    record EffectiveChat(String baseUrl, String apiKey, String model, Double temperature, Duration timeout) {}
+
+    private EffectiveChat effectiveChat(AiProperties props, RuntimeModelConfig runtime) {
+        AiProperties.Chat cfg = props.chat();
+        AiProperties.OpenAiCompatible oc = cfg.openaiCompatible();
+        AiProperties.Ollama ol = cfg.ollama();
+        boolean ollama = "ollama".equals(runtime.effectiveChatProvider(cfg.provider()));
+        return new EffectiveChat(
+                firstNonBlank(runtime.chatBaseUrl(), ollama ? ol.baseUrl() : oc.baseUrl()),
+                // ollama 无密钥概念：显式置 null（不能走 firstNonBlank——候选全空会抛"模型配置缺失"，曾致 runtime provider=ollama 时启动失败）
+                ollama ? null : firstNonBlank(runtime.chatApiKey(), oc.apiKey()),
+                firstNonBlank(runtime.chatModel(), ollama ? ol.chatModel() : oc.chatModel()),
+                ollama ? ol.temperature() : oc.temperature(),
+                ollama ? ol.timeout() : oc.timeout());
+    }
+
+    private ChatModel openAiChat(EffectiveChat c, List<ChatModelListener> listeners) {
+        return OpenAiChatModel.builder()
+                .baseUrl(c.baseUrl())
+                .apiKey(c.apiKey())
+                .modelName(c.model())
+                .temperature(c.temperature())
+                .timeout(c.timeout())
+                .listeners(listeners)
+                .build();
+    }
+
+    private StreamingChatModel openAiStreaming(EffectiveChat c, List<ChatModelListener> listeners) {
+        return OpenAiStreamingChatModel.builder()
+                .baseUrl(c.baseUrl())
+                .apiKey(c.apiKey())
+                .modelName(c.model())
+                .temperature(c.temperature())
+                .timeout(c.timeout())
+                .listeners(listeners)
+                .build();
+    }
+
+    private ChatModel ollamaChat(EffectiveChat c, List<ChatModelListener> listeners) {
+        return OllamaChatModel.builder()
+                .baseUrl(c.baseUrl())
+                .modelName(c.model())
+                .temperature(c.temperature())
+                .timeout(c.timeout())
+                .listeners(listeners)
+                .build();
+    }
+
+    private StreamingChatModel ollamaStreaming(EffectiveChat c, List<ChatModelListener> listeners) {
+        return OllamaStreamingChatModel.builder()
+                .baseUrl(c.baseUrl())
+                .modelName(c.model())
+                .temperature(c.temperature())
+                .timeout(c.timeout())
+                .listeners(listeners)
+                .build();
+    }
+
+    private static String firstNonBlank(String... candidates) {
+        for (String s : candidates) {
+            if (s != null && !s.isBlank()) {
+                return s;
+            }
+        }
+        throw new IllegalStateException("模型配置缺失：所有候选值均为空");
+    }
+}

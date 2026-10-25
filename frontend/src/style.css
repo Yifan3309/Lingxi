@@ -1,0 +1,185 @@
+/*
+ * Tailwind v4：不引入 preflight（避免重置 Element Plus 依赖的原生默认样式）。
+ * 工具类位于 @layer utilities，优先级低于无层样式（Element Plus）——
+ * 约定：布局/间距/排版用 Tailwind，Element Plus 组件内部样式不动它。
+ *
+ * 语义 Token 体系（借鉴 NoteDiscovery/nowen-note）：全部颜色经 CSS 变量声明，
+ * @theme inline 桥接为 Tailwind 工具类（bg-surface / text-tx2 / border-line...），
+ * Element Plus 主色也桥到同一组变量——一处定义，三处生效；换肤/暗色只需覆写变量。
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@plugin "@tailwindcss/typography";
+
+:root {
+  /* 背景三级 */
+  --bg-app: #f6f7fb;        /* 应用底 */
+  --bg-surface: #ffffff;    /* 卡片/面板 */
+  --bg-sidebar: #ffffff;    /* 侧栏 */
+  --bg-hover: #f3f4f6;      /* 列表 hover */
+  /* 边框 */
+  --line: #e5e7eb;
+  --line-strong: #d1d5db;
+  /* 文字三级 */
+  --tx-1: #111827;
+  --tx-2: #6b7280;
+  --tx-3: #9ca3af;
+  /* 主色三件套 + AI 语法色 */
+  --accent: #6366f1;
+  --accent-strong: #4f46e5;
+  --accent-light: #eef2ff;
+  --ai-grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  /* 滚动条 */
+  --scroll-thumb: #d8dbe3;
+  --scroll-thumb-hover: #b4b9c5;
+}
+
+/* 暗色主题：覆写同一组 Token（Element Plus 暗色由 dark/css-vars.css 提供） */
+html.dark {
+  --bg-app: #0f1117;
+  --bg-surface: #161b26;
+  --bg-sidebar: #131722;
+  --bg-hover: #1e2433;
+  --line: #262d3d;
+  --line-strong: #333c50;
+  --tx-1: #e6e9f0;
+  --tx-2: #9aa3b5;
+  --tx-3: #6b7488;
+  --accent: #818cf8;
+  --accent-strong: #a5b4fc;
+  --accent-light: #232845;
+  --scroll-thumb: #2c3446;
+  --scroll-thumb-hover: #3d475e;
+}
+
+/* Tailwind 工具类桥接（inline = 类直接引用变量，换肤即时生效） */
+@theme inline {
+  --color-app: var(--bg-app);
+  --color-surface: var(--bg-surface);
+  --color-sidebar: var(--bg-sidebar);
+  --color-hover: var(--bg-hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-tx1: var(--tx-1);
+  --color-tx2: var(--tx-2);
+  --color-tx3: var(--tx-3);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-light: var(--accent-light);
+}
+
+/* Element Plus 主色全系列桥接（hover/disabled 态才协调） */
+:root {
+  --el-color-primary: var(--accent);
+  --el-color-primary-light-3: #818cf8;
+  --el-color-primary-light-5: #a5b4fc;
+  --el-color-primary-light-7: #c7d2fe;
+  --el-color-primary-light-8: #ddd6fe;
+  --el-color-primary-light-9: var(--accent-light);
+  --el-color-primary-dark-2: var(--accent-strong);
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg-app);
+  color: var(--tx-1);
+}
+
+/* 细滚动条 */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
+/*
+ * 统一列表项交互语言（借鉴 NoteDiscovery .hover-accent）：
+ * hover = 浅底 + 左侧 3px 主色竖条 + 2px 微位移；激活 = accent 浅底 + 竖条。
+ * 列表/相关笔记/来源等可点行统一挂这个类。
+ */
+.hover-accent {
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+
+.hover-accent:not(.is-active):hover {
+  background-color: var(--bg-hover);
+  border-left-color: var(--accent);
+  transform: translateX(2px);
+}
+
+.hover-accent.is-active {
+  background-color: var(--accent-light);
+  border-left-color: var(--accent);
+}
+
+/* AI 能力视觉语法（借鉴 nowen-note）：渐变文字，用于 AI 区标题 */
+.ai-grad-text {
+  background: var(--ai-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Markdown 预览：图片跟随容器宽度缩放（typography 默认不给 img 设 max-width） */
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+/* 暗色下的 prose 排版变量（typography 的浅色默认值在暗底上不可读） */
+html.dark .prose {
+  --tw-prose-body: #c7cdd9;
+  --tw-prose-headings: #e6e9f0;
+  --tw-prose-lead: #9aa3b5;
+  --tw-prose-links: #a5b4fc;
+  --tw-prose-bold: #e6e9f0;
+  --tw-prose-counters: #6b7488;
+  --tw-prose-bullets: #6b7488;
+  --tw-prose-hr: #262d3d;
+  --tw-prose-quotes: #9aa3b5;
+  --tw-prose-quote-borders: #3a4160;
+  --tw-prose-captions: #6b7488;
+  --tw-prose-code: #e6e9f0;
+  --tw-prose-pre-code: #c7cdd9;
+  --tw-prose-pre-bg: #1a2030;
+  --tw-prose-th-borders: #333c50;
+  --tw-prose-td-borders: #262d3d;
+}
+
+/* 聊天"思考中"三点动画 */
+@keyframes typing-blink {
+  0%, 80%, 100% { opacity: 0.2; }
+  40% { opacity: 1; }
+}
+
+.typing-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: #9ca3af;
+  margin-right: 3px;
+  animation: typing-blink 1.2s infinite both;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }

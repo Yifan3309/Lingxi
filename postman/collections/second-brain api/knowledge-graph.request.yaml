@@ -1,0 +1,30 @@
+$kind: http-request
+name: 'knowledge graph (M3)'
+method: GET
+url: '{{baseUrl}}/api/graph'
+order: 6100
+description: 知识图谱：节点=笔记+标签，边=共标签（cotag）+语义近邻（semantic，质心余弦≥0.60 top-2）。断言形状与 cotag 边存在（现有 collection 已有带标签笔记）。
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('graph: status 200', () => pm.response.to.have.status(200));
+      const g = pm.response.json();
+      pm.test('graph: nodes and edges arrays', () => {
+        pm.expect(g.nodes).to.be.an('array');
+        pm.expect(g.edges).to.be.an('array');
+      });
+      pm.test('graph: has note and tag nodes with valid shape', () => {
+        pm.expect(g.nodes.length).to.be.above(0);
+        const note = g.nodes.find((n) => n.type === 'note');
+        pm.expect(note.id).to.be.a('string');
+        pm.expect(note.label).to.be.a('string');
+        if (g.nodes.some((n) => n.type === 'tag')) {
+          pm.expect(g.edges.some((e) => e.type === 'cotag')).to.be.true;
+        }
+      });
+      pm.test('graph: semantic edges (if any) have weight in (0.6, 1]', () => {
+        for (const e of g.edges.filter((e) => e.type === 'semantic')) {
+          pm.expect(e.weight).to.be.within(0.6, 1.0);
+        }
+      });

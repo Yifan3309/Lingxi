@@ -1,0 +1,14 @@
+$kind: http-request
+name: 'get asset'
+method: GET
+url: '{{baseUrl}}{{assetUrl}}'
+order: 4300
+description: 取回刚上传的图片，断言 200 且 content-type 为图片。
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('get asset: status 200', () => pm.response.to.have.status(200));
+      pm.test('get asset: image content type', () => {
+        pm.expect(pm.response.headers.get('Content-Type')).to.match(/^image\//);
+      });

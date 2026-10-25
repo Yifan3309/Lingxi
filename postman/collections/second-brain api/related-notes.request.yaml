@@ -1,0 +1,20 @@
+$kind: http-request
+name: 'related notes (semantic)'
+method: GET
+url: '{{baseUrl}}/api/notes/{{noteId}}/related'
+order: 9600
+description: M2 语义相关笔记推荐：以笔记自身内容为查询做向量召回，排除自身、按笔记去重取最高块分。此时库里只有两篇笔记，PostgreSQL 笔记的相关推荐应命中 LangChain4j 学习笔记。
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('related notes: status 200', () => pm.response.to.have.status(200));
+      const related = pm.response.json();
+      pm.test('related notes: recommends the other note (not itself)', () => {
+        pm.expect(related).to.be.an('array');
+        pm.expect(related.map(r => r.noteId)).to.include(pm.collectionVariables.get('markdownNoteId'));
+        pm.expect(related.map(r => r.noteId)).to.not.include(pm.collectionVariables.get('noteId'));
+      });
+      pm.test('related notes: entries carry score', () => {
+        related.forEach(r => pm.expect(r.score).to.be.a('number'));
+      });

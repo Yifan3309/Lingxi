@@ -1,0 +1,11 @@
+$kind: http-request
+name: 'delete imported md note'
+method: DELETE
+url: '{{baseUrl}}/api/notes/{{importedMdNoteId}}'
+order: 13500
+description: 清理导入的测试笔记（图片导入的验收依赖真实视觉密钥，由用户带密钥手动验收）。
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('delete imported note: status 204', () => pm.response.to.have.status(204));

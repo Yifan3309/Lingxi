@@ -3,7 +3,6 @@ package org.example.domain;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -28,8 +27,8 @@ public class NoteChunk {
     @Column(name = "chunk_index", nullable = false)
     private int chunkIndex;
 
-    @Lob
-    @Column
+    // 同 Note.content：VARCHAR 避免 CLOB 函数校验问题
+    @Column(length = 65536)
     private String text;
 
     @Column(name = "embedding_model", nullable = false)

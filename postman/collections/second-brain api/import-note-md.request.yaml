@@ -1,0 +1,26 @@
+$kind: http-request
+name: 'import note (markdown via tika)'
+method: POST
+url: '{{baseUrl}}/api/notes/import'
+order: 4400
+description: 多模态导入一级链路：md 文件经 Apache Tika 抽取建笔记（source=import），标题取文件名，自动进入分块/嵌入/富化管线。
+body:
+  type: formdata
+  content:
+    - key: file
+      type: file
+      src: 'postman/fixtures/test.md'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('import md: status 201', () => pm.response.to.have.status(201));
+      const note = pm.response.json();
+      pm.test('import md: title from filename, source=import', () => {
+        pm.expect(note.title).to.equal('test');
+        pm.expect(note.source).to.equal('import');
+      });
+      pm.test('import md: tika text landed intact', () => {
+        pm.expect(note.content).to.include('PostgreSQL 迁移 2027');
+      });
+      pm.collectionVariables.set('importedMdNoteId', note.id);

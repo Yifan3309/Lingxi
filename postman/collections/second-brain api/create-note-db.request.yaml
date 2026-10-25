@@ -10,7 +10,8 @@ body:
   content: |-
     {
       "content": "我们团队决定采用 PostgreSQL 作为主数据库，预计 2027 年 Q1 完成迁移，先行在测试环境验证半年。",
-      "tags": "技术决策"
+      "tags": "技术决策",
+      "folder": "工作"
     }
 scripts:
   - type: afterResponse
@@ -22,4 +23,7 @@ scripts:
         pm.expect(note.id).to.be.a('string');
         pm.expect(note.createdAt).to.exist;
         pm.collectionVariables.set('noteId', note.id);
+      });
+      pm.test('create note: folder echoes back', () => {
+        pm.expect(pm.response.json().folder).to.equal('工作');
       });

@@ -1,0 +1,22 @@
+$kind: http-request
+name: 'upload asset'
+method: POST
+url: '{{baseUrl}}/api/assets'
+order: 4200
+description: 图片附件上传（multipart）。图片池设计：不关联笔记。返回 API 路径供 md 引用。
+body:
+  type: formdata
+  content:
+    - key: file
+      type: file
+      src: 'postman/fixtures/test-image.png'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('upload asset: status 200', () => pm.response.to.have.status(200));
+      pm.test('upload asset: returns api url', () => {
+        const url = pm.response.json().url;
+        pm.expect(url).to.match(/^\/api\/assets\/.+\.(png|jpg|jpeg|gif|webp)$/);
+        pm.collectionVariables.set('assetUrl', url);
+      });

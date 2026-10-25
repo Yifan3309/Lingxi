@@ -1,0 +1,28 @@
+$kind: http-request
+name: 'weekly review (M3)'
+method: GET
+url: '{{baseUrl}}/api/review?range=weekly'
+order: 6110
+description: 每日/每周回顾：时间窗内更新的笔记统计 + LLM 回顾叙述（模型不可用时 summary=null，断言允许两态）。
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('review weekly: status 200', () => pm.response.to.have.status(200));
+      const r = pm.response.json();
+      pm.test('review weekly: shape', () => {
+        pm.expect(r.range).to.equal('weekly');
+        pm.expect(r.count).to.be.a('number');
+        pm.expect(r.tags).to.be.an('object');
+        pm.expect(r.folders).to.be.an('object');
+        pm.expect(r.notes).to.be.an('array');
+      });
+      pm.test('review weekly: summary string or null (LLM unavailable tolerated)', () => {
+        pm.expect(r.summary === null || typeof r.summary === 'string').to.be.true;
+      });
+      pm.test('review weekly: notes within window have id/title', () => {
+        for (const n of r.notes) {
+          pm.expect(n.id).to.be.a('string');
+          pm.expect(n.title).to.be.a('string');
+        }
+      });

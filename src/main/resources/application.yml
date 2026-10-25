@@ -1,6 +1,6 @@
 spring:
   application:
-    name: second-brain
+    name: lingxi
   mvc:
     async:
       request-timeout: 180000   # SSE 长连接超时（毫秒）
@@ -19,11 +19,45 @@ spring:
 # 密钥从环境变量 LLM_API_KEY 读取；也可以直接把值写进 api-key（不要提交到 git）。
 app:
   rag:
-    top-k: 5                          # 每次问答召回的笔记分块数
+    top-k: 5                          # 问答最终采用的分块数
     store-path: data/embeddings.json  # 向量库文件持久化位置
     chunk-target-chars: 300           # 分块目标长度（字符）。E5 上限 512 token，中文约 1.3 token/字，300 安全；换 BGE/qwen3 可调回 500-800
     query-prefix: 'query: '           # E5 要求查询侧加 "query: "；换 BGE/qwen3-embedding 时置空 ''
     passage-prefix: 'passage: '       # E5 要求文档侧加 "passage: "；换 BGE/qwen3-embedding 时置空 ''
+    reranker-enabled: true            # 本地 cross-encoder 重排（bge-reranker-v2-m3，onnx-community int8 导出；启动时自动做相关性方向自检）
+    reranker-model-path: models/reranker/onnx-communitybge-reranker-v2-m3-ONNX/model_int8.onnx
+    reranker-tokenizer-path: models/reranker/onnx-communitybge-reranker-v2-m3-ONNX/tokenizer.json
+    reranker-provider: http              # http = Python sidecar（reranker-service/，CUDA EP + 跨请求动态批处理；不可达自动回退本地 onnx）；onnx = 进程内本地
+    reranker-url: http://127.0.0.1:8900  # sidecar 地址；/health 可查 GPU 是否激活与攒批统计
+    rerank-ep: cpu                       # 进程内本地 onnx 的执行模式。JVM 内加载 CUDA provider 在本机必失败（DllMain 1114，决策 15），不再启动空试
+    rerank-min-score: 0.3             # 重排相关性阈值（sigmoid 归一到 0-1，与前端百分数同尺度），低于此值不进 prompt/来源。
+                                      # 社区实测：不相关通常 <0.1，相关 >0.5（详见决策文档），0.3 为折中起点；开销为零（重排后过滤）
+    rerank-max-length: 384            # 重排输入截断长度（token）。bge-reranker-v2-m3 原生 8k 上下文，长分块不截断时 CPU 推理可达数秒——这是此前"首字十几秒"的主因
+    rerank-threads: 0                 # ONNX 推理线程数，0 = 自动（CPU 核数）
+    recall-multiplier: 4              # 重排开启时向量召回量 = top-k × 此倍数，重排后过滤+截断回 top-k
+
+  enrich:                            # M2 笔记 AI 富化：异步生成标签建议 + 摘要（失败不影响保存）
+    enabled: true
+    max-content-chars: 3000
+
+  vision:                           # 多模态导入：图片/扫描 PDF 文字提取（视觉模型）；留空继承 chat 配置
+    model: glm-4v-flash
+
+  import:                           # 多模态导入：分级解析（Tika + 视觉 LLM）
+    max-bytes: 20971520             # 20MB
+    min-pdf-chars: 100              # Tika 抽取低于此字符数判定为扫描版 PDF → 走视觉
+    max-pdf-pages: 10               # 扫描版 PDF 逐页视觉处理的上限页数
+  clip:                             # 网页剪藏：URL → Tika 抽正文 + 图片落地 → LLM 清洗重写 → 笔记(source=clip)
+    connect-timeout-seconds: 5
+    read-timeout-seconds: 20
+    max-bytes: 5242880              # 单页抓取上限 5MB（防超大页面拖死）
+    user-agent: 'Mozilla/5.0 (compatible; lingxi-clip/1.0)'
+    max-images: 10                  # 单页图片落地上限（过滤 icon/logo/头像后）
+    max-image-bytes: 3145728        # 单张图片上限 3MB
+    rewrite-max-chars: 15000        # 正文超过此字符数跳过 LLM 重写（保留 Tika 原文 + 图片文末追加）
+  graph:                            # 知识图谱（M3）语义边参数
+    semantic-min-score: 0.90        # E5 中文短文本余弦基线偏高（不相关对 ~0.85），0.90 才切得干净；同域密集笔记可调低
+    semantic-top-k: 2               # 每笔记最多保留的语义边数（防毛线球）
   ai:
     chat:
       provider: openai-compatible

@@ -1,0 +1,20 @@
+$kind: http-request
+name: 'clip note (bad scheme rejected)'
+method: POST
+url: '{{baseUrl}}/api/notes/clip'
+order: 4510
+description: 剪藏负路径：非 http/https scheme 直接 400（SSRF 轻防护，见决策 16），不建笔记。
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "url": "ftp://example.com/x"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('clip bad scheme: rejected with 400', () => pm.response.to.have.status(400));

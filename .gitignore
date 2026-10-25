@@ -47,3 +47,15 @@ data/
 ### Local model binaries (ONNX) ###
 models/embedding/
 models/reranker/
+
+### Frontend ###
+frontend/node_modules/
+src/main/resources/static/
+
+### Reranker sidecar ###
+reranker-service/venv/
+reranker-service/__pycache__/
+reranker-service/*.log
+
+### ZCode local session artifacts ###
+.zcode/

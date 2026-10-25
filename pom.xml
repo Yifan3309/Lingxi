@@ -14,8 +14,8 @@
     <groupId>org.example</groupId>
     <artifactId>LLM_native_notebook</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <name>second-brain</name>
-    <description>第二大脑：LLM 原生笔记应用（LangChain4j）</description>
+    <name>lingxi</name>
+    <description>灵犀：与你心有灵犀的 AI 笔记应用（LangChain4j）</description>
 
     <properties>
         <java.version>21</java.version>
@@ -63,6 +63,35 @@
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-embeddings</artifactId>
+            <exclusions>
+                <!-- 排除 CPU 版原生库：onnxruntime_gpu 是超集（内置 CPU EP），两 jar 同名原生库共存会冲突 -->
+                <exclusion>
+                    <groupId>com.microsoft.onnxruntime</groupId>
+                    <artifactId>onnxruntime</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- 本地 ONNX 重排：OnnxScoringModel（cross-encoder，配 bge-reranker） -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-onnx-scoring</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.microsoft.onnxruntime</groupId>
+                    <artifactId>onnxruntime</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- ONNX Runtime GPU：内置 CUDA EP + CPU EP（CPU 能力保留，EP 级回退）。需 NVIDIA 驱动 + CUDA 12.x + cuDNN 9.x -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime_gpu</artifactId>
+            <version>1.20.0</version>
+        </dependency>
+        <!-- 多模态导入一级解析：Apache Tika（pdf/docx/pptx/html/txt... 统一文本抽取） -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-document-parser-apache-tika</artifactId>
         </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>

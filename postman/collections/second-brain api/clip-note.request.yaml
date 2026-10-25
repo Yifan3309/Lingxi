@@ -1,0 +1,30 @@
+$kind: http-request
+name: 'clip note (self-referencing html)'
+method: POST
+url: '{{baseUrl}}/api/notes/clip'
+order: 4500
+description: 网页剪藏全链路：自引用 fixture（本应用首页 index.html）→ HttpClient 抓取 → Tika 抽取 → 笔记(source=clip)。SPA 壳抽不到正文时走「标题+来源」兜底文案（断言覆盖该路径）。零外部依赖，不会因外网抖动挂测试。
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "url": "{{baseUrl}}/index.html"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('clip: status 201', () => pm.response.to.have.status(201));
+      const note = pm.response.json();
+      pm.test('clip: source=clip, title and content non-empty', () => {
+        pm.expect(note.source).to.equal('clip');
+        pm.expect(note.title).to.be.a('string').and.not.to.equal('');
+        pm.expect(note.content).to.be.a('string').and.not.to.equal('');
+      });
+      pm.test('clip: spa shell falls back to title+source note', () => {
+        pm.expect(note.content).to.match(/解析失败|未能抽取/);
+      });
+      pm.collectionVariables.set('clippedNoteId', note.id);

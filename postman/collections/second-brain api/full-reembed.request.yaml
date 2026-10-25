@@ -1,0 +1,38 @@
+$kind: http-request
+name: 'full re-embed maintenance (M3)'
+method: POST
+url: '{{baseUrl}}/api/admin/reembed'
+order: 6120
+description: 全量重嵌入（R1 对策）：POST 触发异步任务（202 + 初始进度），随后 GET status 轮询至 running=false，断言 done+failed=total。对同一嵌入模型幂等（重建出相同向量），可安全重复执行。
+headers:
+  - key: Content-Type
+    value: application/json
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('reembed: status 202 accepted', () => pm.response.to.have.status(202));
+      const st = pm.response.json();
+      pm.test('reembed: status shape', () => {
+        pm.expect(st.running).to.be.true;
+        pm.expect(st.total).to.be.at.least(0);
+      });
+      // 轮询至完成（本机数百篇规模在数秒~数十秒内）
+      const poll = (retries) => {
+        if (retries <= 0) {
+          pm.expect.fail('reembed poll timeout');
+        }
+        pm.sendRequest({ url: pm.variables.replaceIn('{{baseUrl}}/api/admin/reembed/status'), method: 'GET' }, (err, resp) => {
+          pm.expect(err).to.be.null;
+          const s = resp.json();
+          if (s.running) {
+            setTimeout(() => poll(retries - 1), 1500);
+            return;
+          }
+          pm.test('reembed: finished with done+failed=total', () => {
+            pm.expect(s.done + s.failed).to.equal(s.total);
+            pm.expect(s.total).to.be.above(0);
+          });
+        });
+      };
+      setTimeout(() => poll(40), 1500);

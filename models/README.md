@@ -7,9 +7,19 @@ M1 过渡方案：嵌入/重排在本地 ONNX 加载，不依赖外部服务；�
 
 ```
 models/
-├── embedding/   # 嵌入模型 ONNX 文件
-└── reranker/    # 重排模型 ONNX 文件
+├── embedding/   # 嵌入模型 ONNX 文件（当前 Multilingual-E5-small）
+└── reranker/    # 重排模型 ONNX 文件（当前 onnx-community/bge-reranker-v2-m3-ONNX 的 int8 导出）
 ```
+
+## ⚠️ 重排模型导出的坑（2026-10-25 实录）
+
+reranker 的 ONNX 必须输出**相关性 logit `[N, 1]`**。曾下载的
+`er6ybge-reranker-v2-m3_dynamic_int8_onnx` 输出的是 hidden states
+`[N, seq, 1024]`（分类头没导出）——**加载不报错，但等于用噪声排序**。
+识别方法：用 ONNX Runtime 查输出 shape；应用侧已有启动自检兜底
+（相关/无关文本试打分，方向不对启动失败）。
+可靠来源：`onnx-community/bge-reranker-v2-m3-ONNX`（HF 官方 onnx-community
+组织，取 `model_int8.onnx` + `tokenizer.json`）。
 
 ## ⚠️ 先读：Qwen3 系列 ONNX 的兼容性问题
 
