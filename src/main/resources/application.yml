@@ -14,6 +14,10 @@ spring:
       ddl-auto: update
     open-in-view: false
 
+server:
+  error:
+    include-message: always   # ResponseStatusException 的中文原因透出到 /error JSON（前端 api.js 读 message 展示；Boot 3 默认 never 会只剩状态码）
+
 # 模型接入：改 provider 字段即可整体切换（openai-compatible | ollama），无需改代码。
 # openai-compatible 适配一切 OpenAI 兼容端点：智谱 GLM、DeepSeek、vLLM 等，换 base-url 即可。
 # 密钥从环境变量 LLM_API_KEY 读取；也可以直接把值写进 api-key（不要提交到 git）。

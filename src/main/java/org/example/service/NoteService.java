@@ -105,13 +105,35 @@ public class NoteService {
         return notes;
     }
 
-    /** 文件夹名规范化：去首尾空白，空白视为未归类（null）。 */
+    /**
+     * 文件夹路径规范化（多层文件夹：/ 分隔）：反斜杠统一为 /，逐段去空白、丢空段
+     * （容忍首尾与连续斜杠），全空视为未归类（null）；「.」「..」段与超长路径拒绝。
+     */
     private static String normalizeFolder(String folder) {
         if (folder == null) {
             return null;
         }
-        String f = folder.trim();
-        return f.isEmpty() ? null : f;
+        StringBuilder path = new StringBuilder();
+        for (String raw : folder.replace('\\', '/').split("/")) {
+            String seg = raw.trim();
+            if (seg.isEmpty()) {
+                continue;
+            }
+            if (seg.equals(".") || seg.equals("..")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "文件夹路径段不能是 . 或 ..：" + seg);
+            }
+            if (path.length() > 0) {
+                path.append('/');
+            }
+            path.append(seg);
+        }
+        if (path.length() == 0) {
+            return null;
+        }
+        if (path.length() > 128) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "文件夹路径过长（上限 128 字符）：" + path);
+        }
+        return path.toString();
     }
 
     private void ingestQuietly(Note note) {        try {

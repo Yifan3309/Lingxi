@@ -1,0 +1,25 @@
+$kind: http-request
+name: 'folder bad path (dot segment rejected)'
+method: POST
+url: '{{baseUrl}}/api/notes'
+order: 10060
+description: 负路径：「.」「..」段直接 400，笔记不落库。
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "title": "负路径测试（不应留存）",
+      "content": "folder 含 .. 段应被拒绝。",
+      "folder": "工作/../.."
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('folder: status 400', () => pm.response.to.have.status(400));
+      pm.test('folder: error message names the bad segment', () => {
+        pm.expect(pm.response.json().message).to.include('..');
+      });

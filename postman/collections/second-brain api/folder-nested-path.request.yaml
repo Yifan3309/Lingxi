@@ -1,0 +1,35 @@
+$kind: http-request
+name: 'folder nested path (normalize + cleanup)'
+method: POST
+url: '{{baseUrl}}/api/notes'
+order: 10050
+description: 多层文件夹：folder 为 / 分隔路径。创建时容忍首尾/连续斜杠与段内空白，反斜杠统一为正斜杠（" 项目A \ 子组 /x " → 项目A/子组/x）；验证后立即删除草稿笔记，不污染数据。
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "title": "文件夹路径测试（临时）",
+      "content": "验证多层文件夹路径规范化，创建后自动删除。",
+      "folder": " 项目A \\ 子组 /x "
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('folder: status 201', () => pm.response.to.have.status(201));
+      const note = pm.response.json();
+      pm.test('folder: path normalized (segments trimmed, backslash unified)', () => {
+        pm.expect(note.folder).to.equal('项目A/子组/x');
+      });
+      pm.test('folder: cleanup scratch note', () => {
+        pm.sendRequest({
+          url: pm.variables.get('baseUrl') + '/api/notes/' + note.id,
+          method: 'DELETE'
+        }, (err, res) => {
+          pm.expect(err).to.be.null;
+          pm.expect(res.code).to.eql(204);
+        });
+      });

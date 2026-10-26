@@ -61,3 +61,6 @@ reranker-service/*.log
 .zcode/
 ### Tauri desktop shell ###
 src-tauri/target/
+
+### Tauri generated schemas (build artifacts) ###
+src-tauri/gen/

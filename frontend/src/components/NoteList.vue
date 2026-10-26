@@ -116,28 +116,68 @@ function toggle(folder) {
   localStorage.setItem(FOLDER_KEY, JSON.stringify([...next]))
 }
 
-/** 按文件夹分组：有文件夹的按组内最新更新时间降序，「未归类」排最后 */
-const groups = computed(() => {
-  const map = new Map()
-  const unfiled = []
+/* ---- 多层文件夹：folder 为 / 分隔路径，前端派生树 ---- */
+const collator = new Intl.Collator('zh')
+
+/** 路径建树：中间层级自动创建（children 以完整路径为键），笔记挂在末段节点 */
+const tree = computed(() => {
+  const root = new Map()
   for (const n of notes.value) {
-    const f = (n.folder || '').trim()
-    if (!f) {
-      unfiled.push(n)
+    const segs = (n.folder || '').split('/').map((s) => s.trim()).filter(Boolean)
+    if (!segs.length) {
       continue
     }
-    if (!map.has(f)) {
-      map.set(f, [])
+    let level = root
+    let path = ''
+    let node = null
+    for (const name of segs) {
+      path = path ? path + '/' + name : name
+      if (!level.has(path)) {
+        level.set(path, { path, name, notes: [], children: new Map() })
+      }
+      node = level.get(path)
+      level = node.children
     }
-    map.get(f).push(n)
+    node.notes.push(n)
   }
-  const latest = (g) => Math.max(...g.items.map((n) => +new Date(n.updatedAt)))
-  const arr = [...map.entries()].map(([folder, items]) => ({ folder, items }))
-  arr.sort((a, b) => latest(b) - latest(a))
+  return root
+})
+
+/** 聚合计数：本层笔记 + 全部后代 */
+function totalOf(node) {
+  let total = node.notes.length
+  for (const child of node.children.values()) {
+    total += totalOf(child)
+  }
+  return total
+}
+
+/** 展平渲染行：兄弟文件夹按名称 zh 排序；展开时先本层笔记、后子文件夹块；「未归类」排最后 */
+const rows = computed(() => {
+  const out = []
+  const walk = (children, depth) => {
+    const nodes = [...children.values()].sort((a, b) => collator.compare(a.name, b.name))
+    for (const node of nodes) {
+      out.push({ type: 'folder', key: node.path, path: node.path, name: node.name, depth, count: totalOf(node) })
+      if (!isCollapsed(node.path)) {
+        for (const n of node.notes) {
+          out.push({ type: 'note', key: n.id, note: n, depth: depth + 1 })
+        }
+        walk(node.children, depth + 1)
+      }
+    }
+  }
+  walk(tree.value, 0)
+  const unfiled = notes.value.filter((n) => !(n.folder || '').trim())
   if (unfiled.length) {
-    arr.push({ folder: null, items: unfiled })
+    out.push({ type: 'folder', key: '__unfiled__', path: null, name: '未归类', depth: 0, count: unfiled.length })
+    if (!isCollapsed(null)) {
+      for (const n of unfiled) {
+        out.push({ type: 'note', key: n.id, note: n, depth: 1 })
+      }
+    }
   }
-  return arr
+  return out
 })
 </script>
 
@@ -200,59 +240,59 @@ const groups = computed(() => {
         </div>
       </template>
 
-      <!-- 浏览态：文件夹层级（折叠组头 + 缩进笔记项） -->
+      <!-- 浏览态：多层文件夹树（缩进随深度，折叠/拖拽迁移到任意层级） -->
       <template v-else>
-        <div v-for="g in groups" :key="g.folder ?? '__unfiled__'">
+        <template v-for="row in rows" :key="(row.type === 'folder' ? 'f:' : 'n:') + row.key">
           <div
-            class="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer select-none text-xs font-semibold text-tx2 hover:text-tx1 transition-colors rounded-md"
-            :class="dropKey === (g.folder ?? '__unfiled__') ? 'bg-accent-light ring-1 ring-accent/40 text-accent-strong' : ''"
+            v-if="row.type === 'folder'"
+            class="flex items-center gap-1.5 pr-2 py-1.5 cursor-pointer select-none text-xs font-semibold text-tx2 hover:text-tx1 transition-colors rounded-md"
+            :class="dropKey === row.key ? 'bg-accent-light ring-1 ring-accent/40 text-accent-strong' : ''"
+            :style="{ paddingLeft: 8 + row.depth * 16 + 'px' }"
             title="点击折叠/展开；拖拽笔记到此移动进该文件夹"
-            @click="toggle(g.folder)"
-            @dragover.prevent="dropKey = g.folder ?? '__unfiled__'"
+            @click="toggle(row.path)"
+            @dragover.prevent="dropKey = row.key"
             @dragleave="dropKey = null"
-            @drop.prevent="onDrop(g.folder)"
+            @drop.prevent="onDrop(row.path)"
           >
             <el-icon
               class="transition-transform duration-150"
-              :class="isCollapsed(g.folder) ? '-rotate-90' : ''"
+              :class="isCollapsed(row.path) ? '-rotate-90' : ''"
             >
               <CaretBottom />
             </el-icon>
             <el-icon class="text-tx3">
-              <FolderOpened v-if="!isCollapsed(g.folder)" />
+              <FolderOpened v-if="!isCollapsed(row.path)" />
               <Folder v-else />
             </el-icon>
-            <span class="truncate">{{ g.folder ?? '未归类' }}</span>
-            <span class="text-tx3 font-normal">{{ g.items.length }}</span>
+            <span class="truncate">{{ row.name }}</span>
+            <span class="text-tx3 font-normal">{{ row.count }}</span>
           </div>
 
-          <div v-show="!isCollapsed(g.folder)" class="flex flex-col gap-0.5">
-            <div
-              v-for="n in g.items"
-              :key="n.id"
-              draggable="true"
-              class="hover-accent px-3 py-2 ml-4 cursor-pointer"
-              :class="[
-                { 'is-active': n.id === currentId },
-                draggingId === n.id ? 'opacity-40' : ''
-              ]"
-              title="拖拽到文件夹组头可移动"
-              @click="select(n.id)"
-              @dragstart="onDragStart($event, n)"
-              @dragend="onDragEnd"
-            >
-              <div class="text-sm font-medium truncate" :class="n.id === currentId ? 'text-accent-strong' : 'text-tx1'">
-                {{ n.title || '未命名' }}
-              </div>
-              <div class="text-xs text-tx3 mt-0.5" :title="new Date(n.updatedAt).toLocaleString()">
-                {{ relTime(n.updatedAt) }}
-              </div>
-              <div v-if="parseTags(n.tags).length" class="flex flex-wrap gap-1 mt-1.5">
-                <el-tag v-for="t in parseTags(n.tags)" :key="t" size="small" effect="plain" round>{{ t }}</el-tag>
-              </div>
+          <div
+            v-else
+            draggable="true"
+            class="hover-accent pr-3 py-2 cursor-pointer"
+            :class="[
+              { 'is-active': row.note.id === currentId },
+              draggingId === row.note.id ? 'opacity-40' : ''
+            ]"
+            :style="{ paddingLeft: 28 + (row.depth - 1) * 16 + 'px' }"
+            title="拖拽到文件夹行可移动"
+            @click="select(row.note.id)"
+            @dragstart="onDragStart($event, row.note)"
+            @dragend="onDragEnd"
+          >
+            <div class="text-sm font-medium truncate" :class="row.note.id === currentId ? 'text-accent-strong' : 'text-tx1'">
+              {{ row.note.title || '未命名' }}
+            </div>
+            <div class="text-xs text-tx3 mt-0.5" :title="new Date(row.note.updatedAt).toLocaleString()">
+              {{ relTime(row.note.updatedAt) }}
+            </div>
+            <div v-if="parseTags(row.note.tags).length" class="flex flex-wrap gap-1 mt-1.5">
+              <el-tag v-for="t in parseTags(row.note.tags)" :key="t" size="small" effect="plain" round>{{ t }}</el-tag>
             </div>
           </div>
-        </div>
+        </template>
       </template>
 
       <!-- 空态公式 -->

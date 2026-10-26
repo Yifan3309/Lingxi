@@ -110,14 +110,16 @@ export function useNotes() {
   }
 }
 
-/** 现有文件夹（去重、排序），供编辑器建议与侧栏分组。 */
+/** 现有文件夹路径（含中间层级，去重、zh 排序），供编辑器自动补全；侧栏树另行派生。 */
 export function useFolders(notesRef) {
   return computed(() => {
     const set = new Set()
     for (const n of notesRef.value || []) {
-      const f = (n.folder || '').trim()
-      if (f) {
-        set.add(f)
+      const segs = (n.folder || '').split('/').map((s) => s.trim()).filter(Boolean)
+      let path = ''
+      for (const seg of segs) {
+        path = path ? path + '/' + seg : seg
+        set.add(path)
       }
     }
     return [...set].sort((a, b) => a.localeCompare(b, 'zh'))
