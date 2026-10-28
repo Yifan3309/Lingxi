@@ -1,6 +1,10 @@
 spring:
   application:
     name: lingxi
+  servlet:
+    multipart:
+      max-file-size: 20MB           # 上传附件/多模态导入上限（Boot 默认 1MB，会卡住大文件）
+      max-request-size: 25MB
   mvc:
     async:
       request-timeout: 180000   # SSE 长连接超时（毫秒）
@@ -40,8 +44,8 @@ app:
     rerank-threads: 0                 # ONNX 推理线程数，0 = 自动（CPU 核数）
     recall-multiplier: 4              # 重排开启时向量召回量 = top-k × 此倍数，重排后过滤+截断回 top-k
 
-  enrich:                            # M2 笔记 AI 富化：异步生成标签建议 + 摘要（失败不影响保存）
-    enabled: true
+  enrich:                            # AI 富化（标签建议+摘要）：显式触发（界面按钮 / POST /api/notes/{id}/enrich），保存不再自动调用
+    enabled: true                    # 总开关；false 时显式端点也返回 400
     max-content-chars: 3000
 
   vision:                           # 多模态导入：图片/扫描 PDF 文字提取（视觉模型）；留空继承 chat 配置
@@ -59,6 +63,25 @@ app:
     max-images: 10                  # 单页图片落地上限（过滤 icon/logo/头像后）
     max-image-bytes: 3145728        # 单张图片上限 3MB
     rewrite-max-chars: 15000        # 正文超过此字符数跳过 LLM 重写（保留 Tika 原文 + 图片文末追加）
+  chat:                             # 问答附件（@链接）：仅本轮上下文，不入库、不写向量
+    max-attachments: 8              # 单次提问附件数上限
+    max-total-chars: 30000          # 全部附件合计字符上限（超出截断）
+    max-note-chars: 8000            # 单篇笔记附件截断
+    max-file-chars: 12000           # 单个上传/本地文件截断
+    max-folder-chars: 20000         # 文件夹附件合计截断
+    max-folder-notes: 10            # 文件夹最多取最近更新的 N 篇
+    max-folder-note-chars: 3000     # 文件夹内单篇截断
+    max-file-bytes: 20971520        # 上传/本地文件大小上限 20MB
+    min-pdf-chars: 100              # PDF 文本低于此值判为扫描版（首版不支持）
+    allow-local-files: true         # 是否允许 @ 本地绝对路径（只读）
+    local-files-require-loopback: true  # 本地文件仅放行本机请求（防局域网任意读文件）
+    upload-ttl-minutes: 60          # 上传解析结果内存缓存时长
+    upload-cache-size: 32           # 上传缓存条数上限（超出挤掉最旧）
+  vault:                            # 旧仓库一键迁移：本机 md 文件夹 → 笔记（相对目录 = folder 路径，图片落地重写链接）
+    max-files: 5000                 # 单次迁移 md 篇数上限（防误指大盘符）
+    max-md-bytes: 10485760          # 单篇 md 上限 10MB
+    max-image-bytes: 10485760       # 单张图片上限 10MB（与 /api/assets 一致）
+    exclude-dirs: [".trash", "node_modules", "__pycache__", ".stfolder"]  # 隐藏目录一律排除，这里补充非隐藏目录
   graph:                            # 知识图谱（M3）语义边参数
     semantic-min-score: 0.90        # E5 中文短文本余弦基线偏高（不相关对 ~0.85），0.90 才切得干净；同域密集笔记可调低
     semantic-top-k: 2               # 每笔记最多保留的语义边数（防毛线球）

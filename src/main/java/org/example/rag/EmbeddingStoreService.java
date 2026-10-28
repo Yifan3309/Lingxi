@@ -10,8 +10,11 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,6 +61,20 @@ public class EmbeddingStoreService {
 
     public void addAll(List<String> ids, List<Embedding> embeddings, List<TextSegment> segments) {
         store.addAll(ids, embeddings, segments);
+        updateCentroids(segments, embeddings);
+        persist();
+    }
+
+    /**
+     * 一篇笔记的向量整体替换（删旧块 + 插新块）——只序列化一次。
+     * 调用方原本是 removeAllByNoteId + addAll 两步，每步都整库写盘：10k 块时一次保存写 2×314ms，
+     * 且中间态（旧块已删、新块未写）若此刻崩溃会留下残缺库。合并成一次，中间态不再落盘。
+     */
+    public void replaceAllByNoteId(String noteId, List<String> ids,
+                                   List<Embedding> embeddings, List<TextSegment> segments) {
+        store.removeAll(metadataKey("note_id").isEqualTo(noteId));
+        store.addAll(ids, embeddings, segments);
+        noteCentroids.remove(noteId);
         updateCentroids(segments, embeddings);
         persist();
     }
@@ -125,13 +142,24 @@ public class EmbeddingStoreService {
         }
     }
 
+    /**
+     * 写盘：先写同目录临时文件，再原子 move 覆盖目标。
+     * 直接覆盖目标文件时，序列化中途崩溃/断电会留下半截 JSON，下次启动整库加载失败。
+     */
     private void persist() {
         synchronized (persistLock) {
             try {
                 if (storePath.getParent() != null) {
                     Files.createDirectories(storePath.getParent());
                 }
-                store.serializeToFile(storePath);
+                Path tmp = storePath.resolveSibling(storePath.getFileName() + ".tmp");
+                store.serializeToFile(tmp);
+                try {
+                    Files.move(tmp, storePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException | AccessDeniedException e) {
+                    // 部分文件系统（网络盘/被占用）不支持原子替换：退回普通覆盖
+                    Files.move(tmp, storePath, StandardCopyOption.REPLACE_EXISTING);
+                }
             } catch (IOException e) {
                 // 持久化失败不阻断检索链路，但要让问题可见
                 throw new UncheckedIOException("向量库写入失败: " + storePath, e);

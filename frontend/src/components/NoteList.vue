@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useNotes, parseTags, relTime } from '../composables/useNotes'
 import { api } from '../api'
+import VaultImportDialog from './VaultImportDialog.vue'
 
 const { notes, currentId, select, newNote, searchMode, searchText, refresh, loading, moveToFolder } = useNotes()
 
@@ -53,6 +54,9 @@ const filtering = computed(() => !!searchText.value.trim())
 const clipVisible = ref(false)
 const clipUrlInput = ref('')
 const clipping = ref(false)
+
+/* ---- 旧仓库一键迁移 ---- */
+const vaultVisible = ref(false)
 
 async function doClip() {
   const url = clipUrlInput.value.trim()
@@ -184,12 +188,12 @@ const rows = computed(() => {
 <template>
   <div class="flex flex-col h-full">
     <div class="p-3 border-b border-line flex flex-col gap-2.5">
-      <div class="flex items-center justify-between">
+      <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
         <el-radio-group v-model="searchMode" size="small">
           <el-radio-button value="keyword">关键词</el-radio-button>
           <el-radio-button value="tag">标签</el-radio-button>
         </el-radio-group>
-        <div class="flex items-center gap-1.5">
+        <div class="flex flex-wrap items-center gap-1.5">
           <el-button type="primary" size="small" round class="!active:scale-95 transition-transform" @click="newNote()">
             + 新建
           </el-button>
@@ -199,9 +203,14 @@ const rows = computed(() => {
           <el-button size="small" round class="!active:scale-95 transition-transform" title="网页剪藏：粘贴 URL 存为笔记" @click="clipVisible = true">
             剪藏
           </el-button>
+          <el-button size="small" round class="!active:scale-95 transition-transform" title="旧仓库一键迁移：本机 md 文件夹 → 多层文件夹笔记" @click="vaultVisible = true">
+            迁移
+          </el-button>
         </div>
         <input ref="importInput" type="file" multiple :accept="IMPORT_ACCEPT" class="hidden" @change="onImportChosen" />
       </div>
+
+      <VaultImportDialog v-model="vaultVisible" />
 
       <el-dialog v-model="clipVisible" title="网页剪藏" width="420px" append-to-body>
         <el-input v-model="clipUrlInput" placeholder="https://… 粘贴文章链接" clearable @keyup.enter="doClip" />

@@ -49,16 +49,22 @@ public class NoteIngestService {
     @Transactional
     public void deleteVectors(String noteId) {
         chunkRepo.deleteByNoteId(noteId);
+        chunkRepo.flush();
         storeService.removeAllByNoteId(noteId);
     }
 
+    /**
+     * 入库：先算分块与向量，再落库并 flush，最后整体替换向量库。
+     * 顺序有意为之——DB 错误（唯一键冲突等）在写向量之前暴露并回滚，避免"向量有了、块没有"的孤儿数据；
+     * 向量替换只写盘一次（原实现 remove + add 各写一次整库）。
+     */
     @Transactional
     public void ingest(Note note) {
-        chunkRepo.deleteByNoteId(note.getId());
-        storeService.removeAllByNoteId(note.getId());
-
         List<String> chunks = NoteChunker.chunk(note.getTitle(), note.getContent(), ragProps.chunkTargetChars());
         if (chunks.isEmpty()) {
+            chunkRepo.deleteByNoteId(note.getId());
+            chunkRepo.flush();
+            storeService.removeAllByNoteId(note.getId());
             log.info("笔记 {} 无可分块内容，跳过嵌入", note.getId());
             return;
         }
@@ -92,8 +98,11 @@ public class NoteIngestService {
                         .map(s -> TextSegment.from(passagePrefix + s.text(), s.metadata()))
                         .toList();
         List<Embedding> embeddings = embeddingModel.embedAll(toEmbed).content();
-        storeService.addAll(ids, embeddings, segments);
+
+        chunkRepo.deleteByNoteId(note.getId());
         chunkRepo.saveAll(rows);
+        chunkRepo.flush();
+        storeService.replaceAllByNoteId(note.getId(), ids, embeddings, segments);
         log.info("笔记 {} 入库完成：{} 个分块", note.getId(), chunks.size());
     }
 

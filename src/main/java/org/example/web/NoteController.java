@@ -2,8 +2,10 @@ package org.example.web;
 
 import org.example.domain.Note;
 import org.example.rag.SemanticSearchService;
+import org.example.service.NoteEnrichService;
 import org.example.service.NoteService;
 import org.example.web.dto.NoteRequest;
+import org.example.web.dto.NoteSummary;
 import org.example.web.dto.RelatedNote;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,10 +31,12 @@ public class NoteController {
 
     private final NoteService noteService;
     private final SemanticSearchService semanticSearchService;
+    private final NoteEnrichService enrichService;
 
-    public NoteController(NoteService noteService, SemanticSearchService semanticSearchService) {
+    public NoteController(NoteService noteService, SemanticSearchService semanticSearchService, NoteEnrichService enrichService) {
         this.noteService = noteService;
         this.semanticSearchService = semanticSearchService;
+        this.enrichService = enrichService;
     }
 
     @PostMapping
@@ -45,9 +49,10 @@ public class NoteController {
         return noteService.create(request);
     }
 
+    /** 列表返回轻量投影（不含正文）；正文走 GET /{id}。 */
     @GetMapping
-    public List<Note> list(@RequestParam(required = false) String keyword,
-                           @RequestParam(required = false) String tag) {
+    public List<NoteSummary> list(@RequestParam(required = false) String keyword,
+                                  @RequestParam(required = false) String tag) {
         return noteService.search(keyword, tag);
     }
 
@@ -61,6 +66,12 @@ public class NoteController {
     public List<RelatedNote> related(@PathVariable String id) {
         Note note = noteService.get(id);
         return semanticSearchService.relatedNotes(note.getId(), note.getTitle(), note.getContent(), 5);
+    }
+
+    /** 显式 AI 富化（标签建议+摘要）：同步调用 LLM 并返回更新后的笔记；保存不再自动触发。 */
+    @PostMapping("/{id}/enrich")
+    public Note enrich(@PathVariable String id) {
+        return enrichService.enrichNow(id);
     }
 
     @PutMapping("/{id}")

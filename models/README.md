@@ -1,6 +1,6 @@
 # 本地模型文件目录（ONNX）
 
-M1 过渡方案：嵌入/重排在本地 ONNX 加载，不依赖外部服务；最终态切 Ollama。
+M1 过渡方案：嵌入/重排在本地 ONNX 加载，不依赖外部服务。重排默认由 `reranker-service/` HTTP sidecar（@8900，GPU）提供，本目录 ONNX 为 sidecar 与 JVM CPU 回退共用；嵌入最终态可切 Ollama。
 模型二进制不进 git（.gitignore 已忽略 models/ 下的模型文件）。
 
 ## 目录约定

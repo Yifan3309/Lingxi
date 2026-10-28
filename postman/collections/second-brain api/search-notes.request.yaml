@@ -13,5 +13,8 @@ scripts:
       pm.test('search notes: keyword hits the db note', () => {
         const notes = pm.response.json();
         pm.expect(notes).to.have.lengthOf.at.least(1);
-        pm.expect(notes[0].content).to.include('PostgreSQL');
+        pm.expect(notes.map((n) => n.id)).to.include(pm.collectionVariables.get('noteId'));
+      });
+      pm.test('search notes: list returns summary projection (no content)', () => {
+        pm.expect(pm.response.json()[0]).to.not.have.property('content');
       });

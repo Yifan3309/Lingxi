@@ -38,25 +38,42 @@ export function useChat() {
     messages.value = []
   }
 
-  async function ask(question) {
-    messages.value.push({ role: 'user', content: question })
+  /**
+   * 提问。attachments 可选：本轮上下文附件
+   * （[{type:'note'|'folder'|'localFile'|'upload', id?, name?, path?, uploadId?}]），
+   * 只进本轮请求，历史里不保留。
+   */
+  async function ask(question, attachments) {
+    const payload = (attachments || []).map((a) => ({
+      type: a.type,
+      id: a.id || undefined,
+      name: a.name || undefined,
+      path: a.path || undefined,
+      uploadId: a.uploadId || undefined
+    }))
+    messages.value.push({
+      role: 'user',
+      content: question,
+      attachments: payload.length ? payload : null
+    })
     messages.value.push({ role: 'assistant', content: '', sources: null })
     // 取数组里的响应式代理，保证流式追加触发渲染
     const assistant = messages.value[messages.value.length - 1]
     streaming.value = true
+    const body = { sessionId: sessionId.value, question }
+    if (payload.length) {
+      body.attachments = payload
+    }
     try {
-      await api.chatStream(
-        { sessionId: sessionId.value, question },
-        (event, data) => {
-          if (event === 'message') {
-            assistant.content += typeof data === 'string' ? data : JSON.stringify(data)
-          } else if (event === 'done') {
-            assistant.sources = (data && data.sources) || []
-          } else if (event === 'error') {
-            assistant.error = typeof data === 'string' ? data : JSON.stringify(data)
-          }
+      await api.chatStream(body, (event, data) => {
+        if (event === 'message') {
+          assistant.content += typeof data === 'string' ? data : JSON.stringify(data)
+        } else if (event === 'done') {
+          assistant.sources = (data && data.sources) || []
+        } else if (event === 'error') {
+          assistant.error = typeof data === 'string' ? data : JSON.stringify(data)
         }
-      )
+      })
     } catch (e) {
       assistant.error = String(e)
     } finally {

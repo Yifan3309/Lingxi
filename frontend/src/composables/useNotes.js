@@ -52,16 +52,6 @@ export function useNotes() {
         saveState.value = 'idle'
       }
     }, 4000)
-    // 富化是异步的：稍后重拉详情，摘要/建议标签到达即展示
-    setTimeout(async () => {
-      if (currentId.value === saved.id) {
-        try {
-          current.value = await api.getNote(saved.id)
-        } catch {
-          // 笔记可能已被删除，忽略
-        }
-      }
-    }, 3000)
     return saved
   }
 

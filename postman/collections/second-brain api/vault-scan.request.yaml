@@ -1,0 +1,29 @@
+$kind: http-request
+name: 'vault import: scan preview'
+method: POST
+url: '{{baseUrl}}/api/notes/vault-import/scan'
+order: 14500
+description: 旧仓库迁移扫描预览：对仓库内 fixture（postman/fixtures/vault-demo/，2 篇 md + 1 图片 + img/sub 2 个子目录）做轻量遍历，断言计数与顶层目录；不建任何笔记，可重复执行。
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    { "path": "postman/fixtures/vault-demo" }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('vault scan: status 200', () => pm.response.to.have.status(200));
+      const r = pm.response.json();
+      pm.test('vault scan: counts', () => {
+        pm.expect(r.mdCount).to.eql(2);
+        pm.expect(r.imageFileCount).to.eql(1);
+        pm.expect(r.folderCount).to.eql(2);
+        pm.expect(r.topLevelFolders).to.include.members(['img', 'sub']);
+        pm.expect(r.truncated).to.be.false;
+      });
+      pm.test('vault scan: bad path 400 shape (follow-up probe)', () => {
+        pm.expect(r.root).to.be.a('string').and.not.be.empty;
+      });

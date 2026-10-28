@@ -42,6 +42,8 @@ export const api = {
     request(`/api/notes/${id}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify(body) }),
   deleteNote: (id) => request(`/api/notes/${id}`, { method: 'DELETE' }),
   related: (id) => request(`/api/notes/${id}/related`),
+  /** 显式 AI 富化（标签建议+摘要）：同步调用 LLM，返回更新后的 Note。保存不再自动触发。 */
+  enrichNote: (id) => request(`/api/notes/${id}/enrich`, { method: 'POST' }),
   config: () => request('/api/admin/config'),
   /** 热切换模型（无需重启）。body: {chat:{model,baseUrl?,apiKey?}, vision:{model}} */
   updateConfig: (body) =>
@@ -57,6 +59,13 @@ export const api = {
   /** M3 全量重嵌入（R1）：触发返回当前进度；轮询 status 直到 running=false。 */
   reembedStart: () => request('/api/admin/reembed', { method: 'POST' }),
   reembedStatus: () => request('/api/admin/reembed/status'),
+
+  /** 旧仓库一键迁移：扫描预览 / 触发（202 + 初始进度）/ 进度轮询。 */
+  vaultScan: (path) =>
+    request('/api/notes/vault-import/scan', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ path }) }),
+  vaultImportStart: (path) =>
+    request('/api/notes/vault-import', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ path }) }),
+  vaultImportStatus: () => request('/api/notes/vault-import/status'),
 
   /** 上传图片附件，返回 { url: '/api/assets/xxx.png' }。multipart 由浏览器自动设 boundary。 */
   async uploadAsset(file) {
@@ -76,9 +85,17 @@ export const api = {
   clipUrl: (url) =>
     request('/api/notes/clip', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ url }) }),
 
+  /** 问答附件上传（@链接-上传来源）：Tika 抽文本返回 uploadId，仅本轮上下文不入库。 */
+  async uploadChatAttachment(file) {
+    const fd = new FormData()
+    fd.append('file', file)
+    return request('/api/chat/attachments', { method: 'POST', body: fd })
+  },
+
   /**
    * RAG 问答（SSE）。fetch + ReadableStream 手动解析（EventSource 不支持 POST）。
    * 帧格式：event: message/done/error + data:。data 尝试 JSON 解析，失败按纯文本（token）。
+   * body.attachments 可选：@ 链接的本轮上下文附件（type: note/folder/localFile/upload）。
    */
   async chatStream(body, onEvent) {
     const res = await fetch('/api/chat', {

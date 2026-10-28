@@ -7,16 +7,17 @@ import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.scoring.ScoringModel;
 import dev.langchain4j.model.scoring.onnx.OnnxScoringModel;
 import dev.langchain4j.rag.DefaultRetrievalAugmentor;
-import dev.langchain4j.rag.RetrievalAugmentor;
 import dev.langchain4j.rag.content.aggregator.ReRankingContentAggregator;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.service.AiServices;
 import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
+import org.example.rag.AttachmentQueryTransformer;
 import org.example.rag.EmbeddingStoreService;
 import org.example.rag.HttpScoringModel;
 import org.example.rag.NoteAssistant;
 import org.example.rag.VectorSearchRetriever;
+import org.example.service.AttachmentChatMemory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -154,21 +155,23 @@ public class RagConfig {
                                        RagProperties props) {
         AiServices<NoteAssistant> builder = AiServices.builder(NoteAssistant.class)
                 .streamingChatModel(streamingChatModel)
-                .chatMemoryProvider(memoryId -> MessageWindowChatMemory.withMaxMessages(20));
+                // 附件只进本轮：记忆存入前剥离附件块（AttachmentChatMemory）
+                .chatMemoryProvider(memoryId ->
+                        new AttachmentChatMemory(MessageWindowChatMemory.withMaxMessages(20)));
         ScoringModel scoringModel = reranker.getIfAvailable();
+        // 统一走 DefaultRetrievalAugmentor：附件增强提问先还原成原问题再召回/重排
+        // （AttachmentQueryTransformer），否则 3 万字附件会污染查询向量
+        DefaultRetrievalAugmentor.DefaultRetrievalAugmentorBuilder augmentor = DefaultRetrievalAugmentor.builder()
+                .contentRetriever(contentRetriever)
+                .queryTransformer(new AttachmentQueryTransformer());
         if (scoringModel != null) {
-            RetrievalAugmentor augmentor = DefaultRetrievalAugmentor.builder()
-                    .contentRetriever(contentRetriever)
-                    .contentAggregator(ReRankingContentAggregator.builder()
-                            .scoringModel(scoringModel)
-                            .minScore(props.rerankMinScore())
-                            .maxResults(props.topK())
-                            .build())
-                    .build();
-            builder.retrievalAugmentor(augmentor);
-        } else {
-            builder.contentRetriever(contentRetriever);
+            augmentor.contentAggregator(ReRankingContentAggregator.builder()
+                    .scoringModel(scoringModel)
+                    .minScore(props.rerankMinScore())
+                    .maxResults(props.topK())
+                    .build());
         }
+        builder.retrievalAugmentor(augmentor.build());
         return builder.build();
     }
 }

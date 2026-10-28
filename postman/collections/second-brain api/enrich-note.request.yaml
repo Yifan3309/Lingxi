@@ -1,0 +1,24 @@
+$kind: http-request
+name: 'explicit enrich (suggested tags + summary)'
+method: POST
+url: '{{baseUrl}}/api/notes/{{markdownNoteId}}/enrich'
+order: 9500
+description: 显式 AI 富化（2026-10-26 起保存不再自动触发，LLM 调用时机由用户决定）：一次调用产出标签建议+摘要并落库，返回更新后的笔记。AI 是建议者：suggestedTags 不等于 tags，采纳由用户 PUT 决定。
+headers:
+  - key: Content-Type
+    value: application/json
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('enrich: status 200', () => pm.response.to.have.status(200));
+      const note = pm.response.json();
+      pm.test('enrich: suggestedTags generated', () => {
+        pm.expect(note.suggestedTags, 'suggestedTags should be filled by explicit enrich').to.be.a('string').and.not.be.empty;
+      });
+      pm.test('enrich: summary generated', () => {
+        pm.expect(note.summary).to.be.a('string').and.not.be.empty;
+      });
+      pm.test('enrich: suggestions not auto-applied (AI advises, user decides)', () => {
+        pm.expect(note.tags).to.equal('学习');
+      });

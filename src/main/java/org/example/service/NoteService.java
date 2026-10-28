@@ -1,10 +1,10 @@
 package org.example.service;
 
-import org.example.config.EnrichProperties;
 import org.example.domain.Note;
 import org.example.rag.NoteIngestService;
 import org.example.repository.NoteRepository;
 import org.example.web.dto.NoteRequest;
+import org.example.web.dto.NoteSummary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
@@ -16,6 +16,7 @@ import java.util.List;
 
 /**
  * 笔记 CRUD。嵌入入库失败不阻断保存（笔记仍可按关键词检索，只是暂不可语义召回）。
+ * AI 富化（标签建议/摘要）已改显式触发（POST /api/notes/{id}/enrich），保存路径不再调用 LLM。
  */
 @Service
 public class NoteService {
@@ -25,17 +26,10 @@ public class NoteService {
 
     private final NoteRepository noteRepo;
     private final NoteIngestService ingestService;
-    private final NoteEnrichService enrichService;
-    private final EnrichProperties enrichProps;
 
-    public NoteService(NoteRepository noteRepo,
-                       NoteIngestService ingestService,
-                       NoteEnrichService enrichService,
-                       EnrichProperties enrichProps) {
+    public NoteService(NoteRepository noteRepo, NoteIngestService ingestService) {
         this.noteRepo = noteRepo;
         this.ingestService = ingestService;
-        this.enrichService = enrichService;
-        this.enrichProps = enrichProps;
     }
 
     public Note create(NoteRequest request) {
@@ -52,7 +46,6 @@ public class NoteService {
         note.setSource(source);
         note = noteRepo.save(note);
         ingestQuietly(note);
-        enrichQuietly(note);
         return note;
     }
 
@@ -72,7 +65,6 @@ public class NoteService {
         }
         note = noteRepo.save(note);
         ingestQuietly(note);
-        enrichQuietly(note);
         return note;
     }
 
@@ -86,20 +78,25 @@ public class NoteService {
         return findOr404(id);
     }
 
-    public List<Note> search(String keyword, String tag) {
+    /**
+     * 列表与关键词/标签搜索：返回投影 {@link NoteSummary}（不含 content），
+     * 正文只在详情接口返回——列表每刷新一次就搬全库正文是没必要的大开销。
+     * keyword 命中由数据库 LIKE 决定；keyword + tag 同时给出时，标签在内存里二次过滤（与原行为一致）。
+     */
+    public List<NoteSummary> search(String keyword, String tag) {
         boolean hasKeyword = keyword != null && !keyword.isBlank();
         boolean hasTag = tag != null && !tag.isBlank();
-        List<Note> notes;
+        List<NoteSummary> notes;
         if (hasKeyword) {
-            notes = noteRepo.findByTitleContainingIgnoreCaseOrContentContainingIgnoreCase(keyword, keyword, SORT);
+            notes = noteRepo.findSummariesByKeyword(keyword, SORT);
         } else if (hasTag) {
-            notes = noteRepo.findByTagsContainingIgnoreCase(tag, SORT);
+            notes = noteRepo.findSummariesByTag(tag, SORT);
         } else {
-            notes = noteRepo.findAll(SORT);
+            notes = noteRepo.findAllSummaries(SORT);
         }
         if (hasTag && hasKeyword) {
             notes = notes.stream()
-                    .filter(n -> n.getTags() != null && n.getTags().toLowerCase().contains(tag.toLowerCase()))
+                    .filter(n -> n.tags() != null && n.tags().toLowerCase().contains(tag.toLowerCase()))
                     .toList();
         }
         return notes;
@@ -136,21 +133,11 @@ public class NoteService {
         return path.toString();
     }
 
-    private void ingestQuietly(Note note) {        try {
+    private void ingestQuietly(Note note) {
+        try {
             ingestService.ingest(note);
         } catch (Exception e) {
             log.error("笔记 {} 嵌入入库失败，已保存但暂不可语义检索", note.getId(), e);
-        }
-    }
-
-    private void enrichQuietly(Note note) {
-        if (!enrichProps.enabled()) {
-            return;
-        }
-        try {
-            enrichService.enrich(note.getId());
-        } catch (Exception e) {
-            log.warn("笔记 {} 富化任务提交失败：{}", note.getId(), String.valueOf(e.getMessage()));
         }
     }
 

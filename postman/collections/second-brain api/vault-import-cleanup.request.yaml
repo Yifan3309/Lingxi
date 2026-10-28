@@ -1,0 +1,42 @@
+$kind: http-request
+name: 'vault import: cleanup imported notes'
+method: GET
+url: '{{baseUrl}}/api/notes/vault-import/status'
+order: 14520
+description: 迁移验收收尾：删除 vault-import-run 导入的笔记（幂等凭证 note_import 随笔记删除后失去关联，重导时会重建）。优先用集合变量，缺失时回退到当前 status.importedNoteIds；每个 DELETE 断言 204，可重复执行——无导入记录时静默跳过。
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('vault cleanup: status readable', () => pm.response.to.have.status(200));
+      const st = pm.response.json();
+      let ids = [];
+      try {
+        ids = JSON.parse(pm.collectionVariables.get('vaultNoteIds') || '[]');
+      } catch (e) {
+        ids = [];
+      }
+      if (!ids.length) {
+        ids = st.importedNoteIds || [];
+      }
+      if (!ids.length) {
+        return;
+      }
+      let chain = Promise.resolve();
+      for (const id of ids) {
+        chain = chain.then(() => new Promise((resolve) => {
+          pm.sendRequest({
+            url: pm.variables.get('baseUrl') + '/api/notes/' + id,
+            method: 'DELETE'
+          }, (err, res) => {
+            pm.test('vault cleanup: delete ' + id + ' returns 204', () => {
+              pm.expect(err).to.be.null;
+              pm.expect(res.code).to.eql(204);
+            });
+            resolve();
+          });
+        }));
+      }
+      chain.then(() => {
+        pm.collectionVariables.set('vaultNoteIds', '[]');
+      });
