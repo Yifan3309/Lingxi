@@ -1,17 +1,14 @@
 <template>
   <div class="h-full flex flex-col gap-4 lg:gap-6">
-    <div class="flex items-center gap-3">
-      <!-- 窄屏：侧栏改成抽屉式浮层，用这个按钮唤起 -->
+    <!-- 桌面态不设页头：当前所在页面由顶栏导航的胶囊指示；窄屏这里只留唤起侧栏的按钮 -->
+    <div class="flex items-center gap-3 md:hidden">
       <button
-        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-tx2 transition-colors hover:text-tx1 md:hidden"
+        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-tx2 transition-colors hover:text-tx1"
         aria-label="打开笔记列表"
         @click="asideOpen = true"
       >
         <el-icon :size="16"><Menu /></el-icon>
       </button>
-      <el-tooltip content="捕捉 → 组织 → 连接 → 回顾 的工作台" placement="bottom-start" :show-after="200">
-        <h2 class="cursor-help text-lg font-semibold text-tx1">笔记</h2>
-      </el-tooltip>
     </div>
 
     <el-container class="relative min-h-0 flex-1">

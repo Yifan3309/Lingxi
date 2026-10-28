@@ -1,5 +1,6 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import ChatDrawer from './components/ChatDrawer.vue'
 import LingXiMark from './components/LingXiMark.vue'
 import ModelConfigDialog from './components/ModelConfigDialog.vue'
@@ -21,9 +22,51 @@ function toggleTheme() {
   localStorage.setItem('lx_theme', theme.value)
 }
 
+/*
+ * 页面导航：页内不再放标题，改用一枚在按钮之间滑动的胶囊指示当前页。
+ * 三个按钮统一 font-medium（字重一致宽度才稳定，胶囊滑动不会抖），只靠颜色区分选中。
+ */
+const route = useRoute()
+const navItems = [
+  { to: '/notes', label: '笔记' },
+  { to: '/graph', label: '图谱' },
+  { to: '/review', label: '回顾' }
+]
+const navRef = ref(null)
+const navEls = reactive({})
+const pill = reactive({ left: 0, width: 0, ready: false })
+
+function setNavEl(to, el) {
+  if (el) {
+    navEls[to] = el
+  }
+}
+
+/** 量取当前按钮的位置，换算成相对导航容器的坐标 */
+function syncPill() {
+  const host = navRef.value
+  const el = navEls[route.path]
+  if (!host || !el) {
+    return
+  }
+  const hostRect = host.getBoundingClientRect()
+  const btnRect = el.getBoundingClientRect()
+  pill.left = btnRect.left - hostRect.left
+  pill.width = btnRect.width
+  pill.ready = true
+}
+
+watch(() => route.path, () => nextTick(syncPill))
+window.addEventListener('resize', syncPill)
+onBeforeUnmount(() => window.removeEventListener('resize', syncPill))
+
 onMounted(async () => {
   await refresh()
   config.value = await api.config().catch(() => null)
+  await nextTick()
+  syncPill()
+  // 字体晚到会改变按钮宽度，落地后补量一次
+  document.fonts?.ready.then(syncPill)
 })
 </script>
 
@@ -35,16 +78,25 @@ onMounted(async () => {
         <span class="text-lg font-semibold text-tx1 tracking-wide">灵犀</span>
       </div>
 
-      <!-- 页面导航 -->
-      <nav class="flex items-center gap-1 ml-2">
-        <router-link v-for="item in [
-          { to: '/notes', label: '笔记' },
-          { to: '/graph', label: '图谱' },
-          { to: '/review', label: '回顾' }
-        ]" :key="item.to" :to="item.to" v-slot="{ isExactActive }" custom>
+      <!-- 页面导航：胶囊滑动指示当前页 -->
+      <nav ref="navRef" class="relative ml-2 flex items-center gap-1">
+        <span
+          class="nav-pill"
+          :class="{ 'is-ready': pill.ready }"
+          :style="{ left: pill.left + 'px', width: pill.width + 'px' }"
+          aria-hidden="true"
+        ></span>
+        <router-link
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          v-slot="{ isExactActive }"
+          custom
+        >
           <button
-            class="px-3.5 py-1.5 rounded-full text-sm transition-colors"
-            :class="isExactActive ? 'bg-accent-light text-accent-strong font-medium' : 'text-tx2 hover:text-tx1 hover:bg-app'"
+            :ref="(el) => setNavEl(item.to, el)"
+            class="relative z-[1] rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-200"
+            :class="isExactActive ? 'text-accent-strong' : 'text-tx2 hover:text-tx1'"
             @click="$router.push(item.to)"
           >
             {{ item.label }}

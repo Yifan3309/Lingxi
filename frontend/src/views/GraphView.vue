@@ -6,7 +6,7 @@
           <div>{{ view.noteCount }} 篇笔记 · {{ view.tagCount }} 标签 · {{ view.edgeCount }} 关联</div>
           <div class="mt-1 opacity-80">实线 = 标签归属，虚线 = 语义相似</div>
         </template>
-        <h2 class="cursor-help text-lg font-semibold text-tx1">知识图谱</h2>
+        <el-icon class="cursor-help text-tx3 transition-colors hover:text-tx1" :size="15"><InfoFilled /></el-icon>
       </el-tooltip>
       <div class="flex-1"></div>
       <el-checkbox

@@ -130,6 +130,30 @@ body {
   border-left-color: var(--accent);
 }
 
+/*
+ * 顶部导航的滑动胶囊：页内不再放页面标题，靠这枚胶囊指示当前所在页面。
+ * 位置与宽度由 App.vue 量取按钮后写进内联样式，这里只负责外观与缓动
+ * （轻微回弹的贝塞尔，切换时有"吸过去"的手感，但不至于晃）。
+ */
+.nav-pill {
+  position: absolute;
+  top: 50%;
+  height: 30px;
+  border-radius: 9999px;
+  background: var(--accent-light);
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    left 0.28s cubic-bezier(0.34, 1.4, 0.64, 1),
+    width 0.28s cubic-bezier(0.34, 1.4, 0.64, 1),
+    opacity 0.2s ease;
+}
+
+.nav-pill.is-ready {
+  opacity: 1;
+}
+
 /* AI 能力视觉语法（借鉴 nowen-note）：渐变文字，用于 AI 区标题 */
 .ai-grad-text {
   background: var(--ai-grad);

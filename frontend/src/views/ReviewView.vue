@@ -2,7 +2,6 @@
   <div class="h-full overflow-y-auto">
     <div class="max-w-3xl mx-auto flex flex-col gap-5 pb-10">
       <div class="flex items-center gap-3">
-        <h2 class="text-lg font-semibold text-tx1">回顾</h2>
         <el-radio-group v-model="range" size="small" @change="load(false)">
           <el-radio-button value="daily">今日</el-radio-button>
           <el-radio-button value="weekly">本周（7 天）</el-radio-button>
