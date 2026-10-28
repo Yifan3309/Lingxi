@@ -1,18 +1,13 @@
 <template>
   <div class="h-full flex flex-col gap-4 overflow-hidden">
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <h2 class="text-lg font-semibold text-tx1">知识图谱</h2>
-      <span v-if="lastData" class="text-xs text-tx3">
-        {{ view.noteCount }} 篇笔记 · {{ view.tagCount }} 标签 · {{ view.edgeCount }} 关联
-      </span>
-      <span class="flex items-center gap-3 text-xs text-tx3">
-        <span class="inline-flex items-center gap-1.5">
-          <span class="w-5 border-t" style="border-color: currentColor"></span>标签归属
-        </span>
-        <span class="inline-flex items-center gap-1.5">
-          <span class="w-5 border-t border-dashed" style="border-color: #818cf8"></span>语义相似
-        </span>
-      </span>
+      <el-tooltip placement="bottom-start" :show-after="200">
+        <template #content>
+          <div>{{ view.noteCount }} 篇笔记 · {{ view.tagCount }} 标签 · {{ view.edgeCount }} 关联</div>
+          <div class="mt-1 opacity-80">实线 = 标签归属，虚线 = 语义相似</div>
+        </template>
+        <h2 class="cursor-help text-lg font-semibold text-tx1">知识图谱</h2>
+      </el-tooltip>
       <div class="flex-1"></div>
       <el-checkbox
         v-model="showSingletonTags"

@@ -9,8 +9,9 @@
       >
         <el-icon :size="16"><Menu /></el-icon>
       </button>
-      <h2 class="text-lg font-semibold text-tx1">笔记</h2>
-      <span class="hidden text-xs text-tx3 sm:inline">捕捉 → 组织 → 连接 → 回顾 的工作台</span>
+      <el-tooltip content="捕捉 → 组织 → 连接 → 回顾 的工作台" placement="bottom-start" :show-after="200">
+        <h2 class="cursor-help text-lg font-semibold text-tx1">笔记</h2>
+      </el-tooltip>
     </div>
 
     <el-container class="relative min-h-0 flex-1">

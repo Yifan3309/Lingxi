@@ -8,8 +8,13 @@
           <el-radio-button value="weekly">本周（7 天）</el-radio-button>
         </el-radio-group>
         <div class="flex-1"></div>
-        <span v-if="loadedAt" class="text-xs text-tx3" :title="'每天每范围自动加载一次，之后手动刷新'">数据截至 {{ loadedAt }}</span>
-        <el-button size="small" round :loading="loading" title="重新拉取统计与 AI 回顾（会调用一次模型）" @click="load(true)">刷新</el-button>
+        <el-tooltip placement="bottom-end" :show-after="200">
+          <template #content>
+            <div v-if="loadedAt">数据截至 {{ loadedAt }}</div>
+            <div class="opacity-80">每天每范围自动加载一次；点刷新会调用一次模型</div>
+          </template>
+          <el-button size="small" round :loading="loading" @click="load(true)">刷新</el-button>
+        </el-tooltip>
       </div>
 
       <template v-if="data">
