@@ -304,9 +304,9 @@ const queryFolders = (q, cb) => {
         ref="contentRef"
         v-model="current.content"
         type="textarea"
-        :rows="collapsed ? 22 : 14"
-        resize="vertical"
-        class="mx-auto w-full max-w-[768px]"
+        :autosize="{ minRows: collapsed ? 20 : 14, maxRows: 60 }"
+        resize="none"
+        class="note-plain-input mx-auto w-full max-w-[768px]"
         placeholder="记点什么…（支持 Markdown、$公式$，可直接粘贴图片）"
         @paste="onPaste"
       />
@@ -315,7 +315,7 @@ const queryFolders = (q, cb) => {
         <div class="w-full min-w-0 max-w-[768px]">
           <div
             ref="previewRef"
-            class="prose prose-sm min-h-[280px] max-w-none rounded-lg bg-app/40 p-5"
+            class="prose prose-sm min-h-[280px] max-w-none"
             v-html="previewHtml"
             @click="onPreviewClick"
           ></div>

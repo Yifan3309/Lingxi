@@ -234,6 +234,34 @@ body {
   font-size: inherit;
 }
 
+/*
+ * 编辑区不做"输入框"：去掉边框、底色、内边距与阴影，正文直接坐在卡片表面上。
+ * 目标观感是纸张而不是表单——光标进入时也不出现描边（focus 态一并抹平）。
+ */
+.note-plain-input .el-textarea__inner {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--tx-1);
+}
+
+.note-plain-input .el-textarea__inner:hover,
+.note-plain-input .el-textarea__inner:focus {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.note-plain-input .el-textarea__inner::placeholder {
+  color: var(--tx-3);
+}
+
 /* 目录锚点跳转时给 sticky 顶栏留出空间 */
 .prose :is(h1, h2, h3) {
   scroll-margin-top: 72px;
