@@ -254,8 +254,11 @@ const rows = computed(() => {
         <template v-for="row in rows" :key="(row.type === 'folder' ? 'f:' : 'n:') + row.key">
           <div
             v-if="row.type === 'folder'"
-            class="flex items-center gap-1.5 pr-2 py-1.5 cursor-pointer select-none text-xs font-semibold text-tx2 hover:text-tx1 transition-colors rounded-md"
-            :class="dropKey === row.key ? 'bg-accent-light ring-1 ring-accent/40 text-accent-strong' : ''"
+            class="flex items-center gap-1.5 pr-2 py-1.5 cursor-pointer select-none text-[11px] font-medium tracking-[0.05em] text-tx3 hover:text-tx1 transition-colors rounded-md"
+            :class="[
+              dropKey === row.key ? 'bg-accent-light ring-1 ring-accent/40 text-accent-strong' : '',
+              row.depth === 0 ? 'mt-1' : ''
+            ]"
             :style="{ paddingLeft: 8 + row.depth * 16 + 'px' }"
             title="点击折叠/展开；拖拽笔记到此移动进该文件夹"
             @click="toggle(row.path)"

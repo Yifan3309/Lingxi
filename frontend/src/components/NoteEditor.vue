@@ -1,9 +1,9 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useNotes, useFolders, relTime } from '../composables/useNotes'
 import { api } from '../api'
-import { renderMarkdown } from '../markdown'
+import { decoratePreview, renderMarkdown } from '../markdown'
 
 const { current, currentId, save, remove, saveState, notes } = useNotes()
 const folders = useFolders(notes)
@@ -29,6 +29,79 @@ function collapse() {
 const mode = ref('edit')
 const previewHtml = computed(() => renderMarkdown(current.value?.content))
 const contentRef = ref(null)
+const previewRef = ref(null)
+
+/* ---- 预览增强：标题锚点 + 代码块复制 + 右侧目录 ---- */
+const toc = ref([])
+const activeHeading = ref('')
+let headingObserver = null
+
+function refreshPreview() {
+  if (mode.value !== 'preview') {
+    toc.value = []
+    activeHeading.value = ''
+    headingObserver?.disconnect()
+    headingObserver = null
+    return
+  }
+  const root = previewRef.value
+  toc.value = decoratePreview(root)
+  observeHeadings(root)
+}
+
+/** 目录高亮：以视口上方 120px 处为参考线，最后一个越过的标题即当前节。 */
+function observeHeadings(root) {
+  headingObserver?.disconnect()
+  headingObserver = null
+  if (!root) {
+    return
+  }
+  const heads = [...root.querySelectorAll('h1, h2, h3')]
+  if (!heads.length) {
+    return
+  }
+  const sync = () => {
+    let current = heads[0].id
+    for (const h of heads) {
+      if (h.getBoundingClientRect().top <= 120) {
+        current = h.id
+      }
+    }
+    activeHeading.value = current
+  }
+  headingObserver = new IntersectionObserver(sync, { threshold: [0, 0.25, 0.5, 1] })
+  heads.forEach((h) => headingObserver.observe(h))
+  sync()
+}
+
+watch([previewHtml, mode], () => nextTick(refreshPreview), { immediate: true })
+
+onBeforeUnmount(() => headingObserver?.disconnect())
+
+function goTo(id) {
+  activeHeading.value = id
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+/** 代码块复制：事件委托，避免给每个按钮单独解绑。 */
+async function onPreviewClick(e) {
+  const btn = e.target.closest('[data-copy]')
+  if (!btn) {
+    return
+  }
+  const code = btn.closest('.code-block')?.querySelector('code')
+  try {
+    await navigator.clipboard.writeText(code?.innerText ?? '')
+    btn.textContent = '已复制'
+    btn.classList.add('is-done')
+    setTimeout(() => {
+      btn.textContent = '复制'
+      btn.classList.remove('is-done')
+    }, 1600)
+  } catch {
+    ElMessage.error('复制失败，请手动选择文本')
+  }
+}
 
 function textareaEl() {
   return contentRef.value?.textarea || contentRef.value?.input || null
@@ -137,7 +210,9 @@ const queryFolders = (q, cb) => {
         <CaretRight />
       </el-icon>
       <span class="text-base font-semibold text-tx1 truncate flex-1">{{ current.title || '未命名' }}</span>
-      <el-tag v-if="current.folder" size="small" effect="plain" round class="!text-xs">{{ current.folder }}</el-tag>
+      <span v-if="current.folder" class="text-[11px] text-tx3 truncate max-w-[40%]">
+        {{ current.folder.split('/').join(' / ') }}
+      </span>
       <span v-if="saveState === 'saving'" class="text-xs text-tx3 shrink-0">保存中…</span>
       <span v-else-if="saveState === 'saved'" class="text-xs text-emerald-600 shrink-0">✓ 已保存</span>
     </div>
@@ -197,14 +272,39 @@ const queryFolders = (q, cb) => {
         type="textarea"
         :rows="collapsed ? 20 : 13"
         resize="vertical"
+        class="mx-auto w-full max-w-[768px]"
         placeholder="记点什么…（支持 Markdown、$公式$，可直接粘贴图片）"
         @paste="onPaste"
       />
-      <div
-        v-else
-        class="prose prose-sm max-w-none bg-app/40 rounded-lg p-5 min-h-[280px]"
-        v-html="previewHtml"
-      ></div>
+      <div v-else class="flex justify-center gap-8">
+        <!-- 宽度由外层容器定（768px ≈ 72 中文字符），prose 自身的 65ch 上限在这里不需要 -->
+        <div class="w-full min-w-0 max-w-[768px]">
+          <div
+            ref="previewRef"
+            class="prose prose-sm min-h-[280px] max-w-none rounded-lg bg-app/40 p-5"
+            v-html="previewHtml"
+            @click="onPreviewClick"
+          ></div>
+        </div>
+        <aside v-if="toc.length" class="sticky top-2 hidden w-[176px] shrink-0 self-start xl:block">
+          <div class="mb-2 text-[11px] tracking-[0.08em] text-tx3">本页目录</div>
+          <ul class="border-l border-line text-xs">
+            <li v-for="t in toc" :key="t.id">
+              <button
+                type="button"
+                class="-ml-px block w-full border-l-2 border-transparent py-1 pr-1 text-left transition-colors hover:text-tx1"
+                :class="[
+                  t.level > 1 ? 'pl-6' : 'pl-3',
+                  activeHeading === t.id ? 'border-accent font-medium text-accent-strong' : 'text-tx3'
+                ]"
+                @click="goTo(t.id)"
+              >
+                {{ t.text }}
+              </button>
+            </li>
+          </ul>
+        </aside>
+      </div>
 
       <div class="flex gap-2">
         <el-button type="primary" class="!active:scale-95 transition-transform" @click="onSave">保存</el-button>

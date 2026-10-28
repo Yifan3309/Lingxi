@@ -145,6 +145,76 @@ body {
   border-radius: 8px;
 }
 
+/*
+ * 预览代码块：深色壳 + 语言条 + 复制按钮（结构由 markdown.js 的 decoratePreview 注入）。
+ * 浅色正文里用深色代码块是文档站通行做法——代码与叙述的质感本来就不同。
+ */
+.prose .code-block {
+  margin: 1rem 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1b1f2a;
+  border: 1px solid #262d3d;
+}
+
+.prose .code-block__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.75rem;
+  background: #222835;
+  border-bottom: 1px solid #2c3446;
+}
+
+.prose .code-block__lang {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9aa3b5;
+}
+
+.prose .code-block__copy {
+  font-family: inherit;
+  font-size: 11px;
+  color: #9aa3b5;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.prose .code-block__copy:hover {
+  color: #e6e9f0;
+}
+
+.prose .code-block__copy.is-done {
+  color: #6ee7b7;
+}
+
+.prose .code-block pre {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  background: transparent;
+  border-radius: 0;
+  color: #c7cdd9;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.prose .code-block pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* 目录锚点跳转时给 sticky 顶栏留出空间 */
+.prose :is(h1, h2, h3) {
+  scroll-margin-top: 72px;
+}
+
 /* 暗色下的 prose 排版变量（typography 的浅色默认值在暗底上不可读） */
 html.dark .prose {
   --tw-prose-body: #c7cdd9;
