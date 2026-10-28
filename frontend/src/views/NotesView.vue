@@ -30,7 +30,6 @@
 
       <el-main class="!p-4 flex flex-col gap-4 overflow-y-auto lg:!p-6">
         <NoteEditor />
-        <AiPanel />
       </el-main>
     </el-container>
   </div>
@@ -40,7 +39,6 @@
 import { onMounted, ref, watch } from 'vue'
 import NoteList from '../components/NoteList.vue'
 import NoteEditor from '../components/NoteEditor.vue'
-import AiPanel from '../components/AiPanel.vue'
 import { useNotes } from '../composables/useNotes'
 
 const { notes, currentId, refresh } = useNotes()

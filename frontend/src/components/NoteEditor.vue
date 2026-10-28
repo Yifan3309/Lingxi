@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useNotes, useFolders, relTime } from '../composables/useNotes'
 import { api } from '../api'
 import { decoratePreview, renderMarkdown } from '../markdown'
+import AiPanel from './AiPanel.vue'
 
 const { current, currentId, save, remove, saveState, notes } = useNotes()
 const folders = useFolders(notes)
@@ -13,7 +14,8 @@ const folders = useFolders(notes)
  * 点击顶栏展开标题/文件夹/标签设置。保存成功后自动收起（内容优先的工作流）。
  */
 const PANEL_KEY = 'lx_editor_panel_collapsed'
-const collapsed = ref(localStorage.getItem(PANEL_KEY) === '1')
+/** 默认收起：属性（标题/文件夹/标签）点开才出现，编辑区默认只有标题行 + 正文 */
+const collapsed = ref(localStorage.getItem(PANEL_KEY) !== '0')
 
 function togglePanel() {
   collapsed.value = !collapsed.value
@@ -337,6 +339,9 @@ const queryFolders = (q, cb) => {
         </aside>
       </div>
     </div>
+
+    <!-- AI 区收纳进编辑块内部：默认只留一行标题，点开才展开摘要/标签/相关笔记 -->
+    <AiPanel />
   </div>
   <div v-else class="py-20">
     <el-empty description="选择左侧笔记，或新建一篇" />

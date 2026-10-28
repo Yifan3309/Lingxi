@@ -7,6 +7,8 @@ import { useNotes, parseTags } from '../composables/useNotes'
 const { current, currentId, adoptTag, select } = useNotes()
 const related = ref([])
 const enriching = ref(false)
+/** 默认收起：AI 内容按需展开，编辑区保持干净 */
+const open = ref(false)
 
 watch(currentId, async (id) => {
   related.value = []
@@ -32,29 +34,39 @@ async function onEnrich() {
 </script>
 
 <template>
-  <div v-if="current && currentId" class="mx-auto flex w-full max-w-[768px] flex-col gap-6">
-    <div class="border-t border-line/70 pt-5">
-      <div class="mb-2 flex items-center gap-1.5">
-        <el-tooltip
-          content="点标签即并入 tags；AI 只给建议，采纳与否由你决定"
-          placement="top-start"
-          :show-after="250"
-        >
-          <span class="flex cursor-help items-center gap-1.5">
-            <el-icon class="text-violet-500"><MagicStick /></el-icon>
-            <span class="text-xs font-semibold ai-grad-text tracking-wide">AI 摘要与建议标签</span>
-          </span>
-        </el-tooltip>
-        <el-tooltip
-          :content="current.summary || parseTags(current.suggestedTags).length ? '重新生成摘要与标签' : '生成摘要与建议标签'"
-          placement="top"
-          :show-after="250"
-        >
-          <el-button class="!ml-auto" text circle :loading="enriching" @click="onEnrich">
-            <el-icon :size="15"><Refresh /></el-icon>
-          </el-button>
-        </el-tooltip>
-      </div>
+  <div v-if="current && currentId" class="mx-auto w-full max-w-[768px]">
+    <!-- 收起态只有一行：箭头 + 标签 + 刷新；点箭头/标签展开摘要、建议标签与相关笔记 -->
+    <div class="flex items-center gap-1.5 border-t border-line/70 py-3">
+      <el-icon
+        class="cursor-pointer text-tx3 transition-transform duration-150 hover:text-tx1"
+        :class="open ? 'rotate-90' : ''"
+        @click="open = !open"
+      >
+        <CaretRight />
+      </el-icon>
+      <el-tooltip
+        content="点标签即并入 tags；AI 只给建议，采纳与否由你决定"
+        placement="top-start"
+        :show-after="250"
+      >
+        <span class="flex cursor-pointer items-center gap-1.5" @click="open = !open">
+          <el-icon class="text-violet-500"><MagicStick /></el-icon>
+          <span class="text-xs font-semibold ai-grad-text tracking-wide">AI 摘要与建议标签</span>
+        </span>
+      </el-tooltip>
+      <el-tooltip
+        :content="current.summary || parseTags(current.suggestedTags).length ? '重新生成摘要与标签' : '生成摘要与建议标签'"
+        placement="top"
+        :show-after="250"
+      >
+        <el-button class="!ml-auto" text circle :loading="enriching" @click="onEnrich">
+          <el-icon :size="15"><Refresh /></el-icon>
+        </el-button>
+      </el-tooltip>
+    </div>
+
+    <div v-show="open" class="flex flex-col gap-5 pb-6">
+      <div>
       <template v-if="current.summary || parseTags(current.suggestedTags).length">
         <div v-if="current.summary" class="text-sm text-tx2 leading-relaxed mb-2.5">{{ current.summary }}</div>
         <div v-if="parseTags(current.suggestedTags).length" class="flex flex-wrap gap-2">
@@ -73,18 +85,19 @@ async function onEnrich() {
       <div v-else class="text-xs text-tx3 leading-relaxed">
         尚未生成。点右上角刷新图标让 AI 提炼一句话摘要并建议 2-5 个标签——只在你需要时调用。
       </div>
-    </div>
+      </div>
 
-    <div v-if="related.length" class="border-t border-line/70 pt-5">
-      <div class="mb-1.5 text-xs font-semibold tracking-wide text-tx2">相关笔记</div>
-      <div
-        v-for="r in related"
-        :key="r.noteId"
-        class="hover-accent px-2 py-1.5 cursor-pointer text-sm text-tx1"
-        @click="select(r.noteId)"
-      >
-        <span class="text-tx3 text-xs float-right">{{ fmtScore(r.score) }}</span>
-        <span class="truncate">{{ r.title || '未命名' }}</span>
+      <div v-if="related.length" class="border-t border-line/70 pt-4">
+        <div class="mb-1.5 text-xs font-semibold tracking-wide text-tx2">相关笔记</div>
+        <div
+          v-for="r in related"
+          :key="r.noteId"
+          class="hover-accent px-2 py-1.5 cursor-pointer text-sm text-tx1"
+          @click="select(r.noteId)"
+        >
+          <span class="text-tx3 text-xs float-right">{{ fmtScore(r.score) }}</span>
+          <span class="truncate">{{ r.title || '未命名' }}</span>
+        </div>
       </div>
     </div>
   </div>
