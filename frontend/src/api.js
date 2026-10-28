@@ -4,9 +4,20 @@
  */
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
+/** 普通请求超时：首屏列表一旦挂住，UI 会永远停在加载态（只有下一次操作才恢复） */
+const REQUEST_TIMEOUT_MS = 15000
 
 async function request(url, options = {}) {
-  const res = await fetch(url, options)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  let res
+  try {
+    res = await fetch(url, { ...options, signal: options.signal || controller.signal })
+  } catch (err) {
+    throw new Error(err?.name === 'AbortError' ? '请求超时，请重试' : String(err?.message || err))
+  } finally {
+    clearTimeout(timer)
+  }
   if (!res.ok) {
     let detail = ''
     try {

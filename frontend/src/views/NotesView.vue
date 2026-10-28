@@ -3,7 +3,7 @@
     <div class="flex items-center gap-3">
       <!-- 窄屏：侧栏改成抽屉式浮层，用这个按钮唤起 -->
       <button
-        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-tx2 transition-colors hover:text-tx1 lg:hidden"
+        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-tx2 transition-colors hover:text-tx1 md:hidden"
         aria-label="打开笔记列表"
         @click="asideOpen = true"
       >
@@ -16,16 +16,16 @@
     <el-container class="relative min-h-0 flex-1">
       <div
         v-if="asideOpen"
-        class="fixed inset-x-0 bottom-0 top-14 z-20 bg-black/20 lg:hidden"
+        class="fixed inset-x-0 bottom-0 top-14 z-20 bg-black/20 md:hidden"
         @click="asideOpen = false"
       ></div>
 
       <el-aside
         width="300px"
         class="!bg-sidebar overflow-hidden border-r border-line transition-transform duration-200
-               max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:top-14 max-lg:z-30
-               lg:static lg:translate-x-0"
-        :class="asideOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-full'"
+               max-md:fixed max-md:bottom-0 max-md:left-0 max-md:top-14 max-md:z-30
+               md:static md:translate-x-0"
+        :class="asideOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'"
       >
         <NoteList />
       </el-aside>
@@ -39,16 +39,23 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import NoteList from '../components/NoteList.vue'
 import NoteEditor from '../components/NoteEditor.vue'
 import AiPanel from '../components/AiPanel.vue'
 import { useNotes } from '../composables/useNotes'
 
-const { currentId } = useNotes()
-/** 窄屏侧栏（<lg 才生效）：选中笔记后自动收起 */
+const { notes, currentId, refresh } = useNotes()
+/** 窄屏侧栏（<md 才生效）：选中笔记后自动收起 */
 const asideOpen = ref(false)
 watch(currentId, () => {
   asideOpen.value = false
+})
+
+/** 首屏兜底：App 挂载时的加载可能早于后端就绪，列表为空就自己再拉一次 */
+onMounted(() => {
+  if (!notes.value.length) {
+    refresh().catch(() => {})
+  }
 })
 </script>

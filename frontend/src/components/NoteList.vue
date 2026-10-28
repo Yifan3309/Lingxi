@@ -5,7 +5,7 @@ import { useNotes, parseTags, relTime } from '../composables/useNotes'
 import { api } from '../api'
 import VaultImportDialog from './VaultImportDialog.vue'
 
-const { notes, currentId, select, newNote, searchMode, searchText, refresh, loading, moveToFolder } = useNotes()
+const { notes, currentId, select, newNote, searchMode, searchText, refresh, loading, loadError, moveToFolder } = useNotes()
 
 /* ---- 多模态导入（Tika + 视觉 LLM 分级解析） ---- */
 const importInput = ref(null)
@@ -307,8 +307,14 @@ const rows = computed(() => {
         </template>
       </template>
 
-      <!-- 空态公式 -->
-      <div v-if="!notes.length && !loading" class="flex flex-col items-center pt-16 gap-3 px-6">
+      <!-- 空态：加载失败与"确实没有笔记"必须分开，否则排查时会被误认为空库 -->
+      <div v-if="!notes.length && !loading && loadError" class="flex flex-col items-center pt-16 gap-3 px-6">
+        <div class="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center text-2xl">!</div>
+        <div class="text-sm font-medium text-tx2">笔记加载失败</div>
+        <div class="text-xs text-tx3 text-center max-w-[220px] leading-relaxed break-all">{{ loadError }}</div>
+        <el-button type="primary" round class="!active:scale-95 transition-transform" @click="refresh">重试</el-button>
+      </div>
+      <div v-else-if="!notes.length && !loading" class="flex flex-col items-center pt-16 gap-3 px-6">
         <div class="w-14 h-14 rounded-2xl bg-accent-light flex items-center justify-center text-2xl">📝</div>
         <div class="text-sm font-medium text-tx2">还没有笔记</div>
         <div class="text-xs text-tx3 text-center max-w-[200px] leading-relaxed">

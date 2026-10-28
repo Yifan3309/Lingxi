@@ -8,22 +8,43 @@ const current = ref(null)
 const searchMode = ref('keyword')
 const searchText = ref('')
 const loading = ref(false)
+/** 首屏加载失败原因：有值时列表区显示可重试的错误态，而不是"还没有笔记" */
+const loadError = ref(null)
 /** 保存反馈（借鉴 NoteDiscovery 无弹窗三态）：saving → saved（4s 后回落） */
 const saveState = ref('idle')
 
 export function useNotes() {
+  /** 列表查询参数：搜索框有内容时按模式带上 keyword / tag */
+  function listParams() {
+    const params = {}
+    if (searchText.value) {
+      if (searchMode.value === 'keyword') {
+        params.keyword = searchText.value
+      } else {
+        params.tag = searchText.value
+      }
+    }
+    return params
+  }
+
+  /**
+   * 拉列表。首屏这一发可能早于后端就绪（应用刚启动、连接被重置），
+   * 失败一次就整个左栏停在空态、要等下一次保存才恢复——所以这里重试一次。
+   */
   async function refresh() {
     loading.value = true
+    loadError.value = null
     try {
-      const params = {}
-      if (searchText.value) {
-        if (searchMode.value === 'keyword') {
-          params.keyword = searchText.value
-        } else {
-          params.tag = searchText.value
-        }
+      try {
+        notes.value = await api.listNotes(listParams())
+      } catch (first) {
+        await new Promise((resolve) => setTimeout(resolve, 300))
+        notes.value = await api.listNotes(listParams())
       }
-      notes.value = await api.listNotes(params)
+    } catch (err) {
+      loadError.value = String(err?.message || err)
+      console.error('加载笔记列表失败', err)
+      throw err
     } finally {
       loading.value = false
     }
@@ -89,6 +110,7 @@ export function useNotes() {
     searchMode,
     searchText,
     loading,
+    loadError,
     saveState,
     refresh,
     select,
