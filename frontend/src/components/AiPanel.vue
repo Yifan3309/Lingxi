@@ -36,7 +36,7 @@ async function onEnrich() {
 <template>
   <div v-if="current && currentId" class="mx-auto w-full max-w-[768px]">
     <!-- 收起态只有一行：箭头 + 标签 + 刷新；点箭头/标签展开摘要、建议标签与相关笔记 -->
-    <div class="flex items-center gap-1.5 border-t border-line/70 py-3">
+    <div class="flex items-center gap-1.5 py-2">
       <el-icon
         class="cursor-pointer text-tx3 transition-transform duration-150 hover:text-tx1"
         :class="open ? 'rotate-90' : ''"

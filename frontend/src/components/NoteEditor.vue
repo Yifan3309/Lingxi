@@ -269,7 +269,7 @@ const queryFolders = (q, cb) => {
     </div>
 
     <!-- 展开态设置面板：标题 / 元数据 / 文件夹+标签 -->
-    <div v-show="!collapsed" class="mx-auto flex w-full max-w-[768px] flex-col gap-3 border-b border-line/70 pb-4">
+    <div v-show="!collapsed" class="mx-auto flex w-full max-w-[768px] flex-col gap-3 pb-3">
       <el-input
         v-model="current.title"
         placeholder="标题（留空自动取内容首行）"
@@ -296,8 +296,11 @@ const queryFolders = (q, cb) => {
       </div>
     </div>
 
-    <!-- 正文：编辑态是一块纯文本域，预览态是排版 + 右侧目录；不再有工具条与底部按钮 -->
-    <div class="flex flex-col gap-3 pb-8 pt-3">
+    <!-- AI 区夹在标题行与正文之间：默认一行，点开才展开摘要/标签/相关笔记 -->
+    <AiPanel />
+
+    <!-- 正文：编辑态是一块纯文本域，预览态是排版 + 右侧目录；分隔线之上是元信息区 -->
+    <div class="flex flex-col gap-3 border-t border-line/70 pb-8 pt-4">
       <el-input
         v-if="mode === 'edit'"
         ref="contentRef"
@@ -339,9 +342,6 @@ const queryFolders = (q, cb) => {
         </aside>
       </div>
     </div>
-
-    <!-- AI 区收纳进编辑块内部：默认只留一行标题，点开才展开摘要/标签/相关笔记 -->
-    <AiPanel />
   </div>
   <div v-else class="py-20">
     <el-empty description="选择左侧笔记，或新建一篇" />
