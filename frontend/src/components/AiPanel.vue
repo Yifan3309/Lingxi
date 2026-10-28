@@ -34,19 +34,26 @@ async function onEnrich() {
 <template>
   <div v-if="current && currentId" class="flex flex-col gap-3">
     <div class="bg-surface rounded-xl shadow-sm ring-1 ring-line/70 p-4">
-      <div class="flex items-center gap-1.5 mb-2">
-        <el-icon class="text-violet-500"><MagicStick /></el-icon>
-        <span class="text-xs font-semibold ai-grad-text tracking-wide">AI 摘要与建议标签</span>
-        <el-button
-          size="small"
-          text
-          type="primary"
-          class="!ml-auto"
-          :loading="enriching"
-          @click="onEnrich"
+      <div class="mb-2 flex items-center gap-1.5">
+        <el-tooltip
+          content="点标签即并入 tags；AI 只给建议，采纳与否由你决定"
+          placement="top-start"
+          :show-after="250"
         >
-          {{ current.summary || parseTags(current.suggestedTags).length ? '刷新' : '生成' }}
-        </el-button>
+          <span class="flex cursor-help items-center gap-1.5">
+            <el-icon class="text-violet-500"><MagicStick /></el-icon>
+            <span class="text-xs font-semibold ai-grad-text tracking-wide">AI 摘要与建议标签</span>
+          </span>
+        </el-tooltip>
+        <el-tooltip
+          :content="current.summary || parseTags(current.suggestedTags).length ? '重新生成摘要与标签' : '生成摘要与建议标签'"
+          placement="top"
+          :show-after="250"
+        >
+          <el-button class="!ml-auto" text circle :loading="enriching" @click="onEnrich">
+            <el-icon :size="15"><Refresh /></el-icon>
+          </el-button>
+        </el-tooltip>
       </div>
       <template v-if="current.summary || parseTags(current.suggestedTags).length">
         <div v-if="current.summary" class="text-sm text-tx2 leading-relaxed mb-2.5">{{ current.summary }}</div>
@@ -62,7 +69,6 @@ async function onEnrich() {
             {{ t }} <span class="ml-0.5 font-bold">+</span>
           </el-tag>
         </div>
-        <div class="text-xs text-tx3 mt-2">建议标签点击采纳（并入 tags，AI 建议你决策）</div>
       </template>
       <div v-else class="text-xs text-tx3 leading-relaxed">
         尚未生成。点「生成」让 AI 提炼一句话摘要并建议 2-5 个标签——只在你需要时调用。

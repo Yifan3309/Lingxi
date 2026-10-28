@@ -107,7 +107,13 @@ function textareaEl() {
   return contentRef.value?.textarea || contentRef.value?.input || null
 }
 
+/** 编辑 ⇄ 预览：顶栏一个图标按钮循环切换（图标即下一个动作） */
+function toggleMode() {
+  mode.value = mode.value === 'edit' ? 'preview' : 'edit'
+}
+
 /* ---- 图片：按钮上传 + 粘贴上传，插入光标处 ---- */
+// OCR 扩展位（M4 后续）：pickImage 旁边挂拍照/OCR 入口，仍走「更多」菜单或图标按钮，不占正文区
 const fileInput = ref(null)
 const uploading = ref(false)
 
@@ -185,6 +191,17 @@ async function onDelete() {
   ElMessage.success('已删除')
 }
 
+/** 「更多」菜单：低频操作集中在这里，正文区保持干净 */
+function onCommand(command) {
+  if (command === 'settings') {
+    togglePanel()
+  } else if (command === 'image') {
+    pickImage()
+  } else if (command === 'delete') {
+    onDelete()
+  }
+}
+
 const charCount = () => (current.value?.content || '').length
 
 /** 文件夹输入建议：前缀/包含匹配已有文件夹 */
@@ -198,23 +215,58 @@ const queryFolders = (q, cb) => {
 
 <template>
   <div v-if="current" class="bg-surface rounded-xl shadow-sm ring-1 ring-line/70 flex flex-col overflow-hidden">
-    <!-- 收起态顶栏：点击展开设置；始终可见标题与保存状态 -->
-    <div
-      class="flex items-center gap-2 px-4 py-2.5 cursor-pointer select-none hover:bg-app/60 transition-colors"
-      @click="togglePanel"
-    >
+    <!--
+      单行顶栏：只放「标题 + 一个保存 + 图标簇」。
+      编辑/预览、插入图片、属性、删除全部收进图标按钮与「更多」菜单，正文区不再有任何工具条。
+    -->
+    <div class="flex items-center gap-1.5 px-4 py-2 select-none">
       <el-icon
-        class="text-tx3 transition-transform duration-150"
+        class="cursor-pointer text-tx3 transition-transform duration-150 hover:text-tx1"
         :class="collapsed ? '' : 'rotate-90'"
+        @click="togglePanel"
       >
         <CaretRight />
       </el-icon>
-      <span class="text-base font-semibold text-tx1 truncate flex-1">{{ current.title || '未命名' }}</span>
-      <span v-if="current.folder" class="text-[11px] text-tx3 truncate max-w-[40%]">
+      <span
+        class="min-w-0 flex-1 cursor-pointer truncate text-base font-semibold text-tx1"
+        @click="togglePanel"
+      >
+        {{ current.title || '未命名' }}
+      </span>
+      <span v-if="current.folder" class="hidden max-w-[30%] truncate text-[11px] text-tx3 lg:inline">
         {{ current.folder.split('/').join(' / ') }}
       </span>
-      <span v-if="saveState === 'saving'" class="text-xs text-tx3 shrink-0">保存中…</span>
-      <span v-else-if="saveState === 'saved'" class="text-xs text-emerald-600 shrink-0">✓ 已保存</span>
+      <span v-if="saveState === 'saving'" class="ml-1 shrink-0 text-[11px] text-tx3">保存中…</span>
+      <span v-else-if="saveState === 'saved'" class="ml-1 shrink-0 text-[11px] text-emerald-600">已保存</span>
+
+      <div class="ml-1 flex shrink-0 items-center gap-0.5">
+        <el-button type="primary" size="small" round class="!px-3 !active:scale-95 transition-transform" @click="onSave">
+          保存
+        </el-button>
+        <el-tooltip :content="mode === 'edit' ? '预览' : '编辑'" placement="bottom" :show-after="250">
+          <el-button text circle @click="toggleMode">
+            <el-icon :size="16"><View v-if="mode === 'edit'" /><EditPen v-else /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip v-if="mode === 'edit'" content="插入图片" placement="bottom" :show-after="250">
+          <el-button text circle :loading="uploading" @click="pickImage">
+            <el-icon :size="16"><Picture /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-dropdown trigger="click" @command="onCommand">
+          <el-button text circle>
+            <el-icon :size="16"><MoreFilled /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="settings">{{ collapsed ? '编辑属性（文件夹 / 标签）' : '收起属性' }}</el-dropdown-item>
+              <el-dropdown-item command="image" :disabled="mode === 'preview'">插入图片</el-dropdown-item>
+              <el-dropdown-item command="delete" divided :disabled="!currentId">删除笔记</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
+      <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileChosen" />
     </div>
 
     <!-- 展开态设置面板：标题 / 元数据 / 文件夹+标签 -->
@@ -245,32 +297,14 @@ const queryFolders = (q, cb) => {
       </div>
     </div>
 
-    <!-- 内容区：编辑/预览切换 + 插入图片 + 正文 -->
-    <div class="px-5 py-4 flex flex-col gap-3.5">
-      <!-- OCR 扩展位（M4 后续）：插入图片按钮旁挂 el-upload 拍照/OCR 入口 -->
-      <div class="flex items-center justify-between">
-        <el-radio-group v-model="mode" size="small">
-          <el-radio-button value="edit">编辑</el-radio-button>
-          <el-radio-button value="preview">预览</el-radio-button>
-        </el-radio-group>
-        <el-button
-          size="small"
-          :loading="uploading"
-          :disabled="mode === 'preview'"
-          class="!active:scale-95 transition-transform"
-          @click="pickImage"
-        >
-          <el-icon class="mr-1"><Picture /></el-icon>插入图片
-        </el-button>
-        <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileChosen" />
-      </div>
-
+    <!-- 正文：编辑态是一块纯文本域，预览态是排版 + 右侧目录；不再有工具条与底部按钮 -->
+    <div class="flex flex-col gap-3 px-5 pb-5 pt-1.5">
       <el-input
         v-if="mode === 'edit'"
         ref="contentRef"
         v-model="current.content"
         type="textarea"
-        :rows="collapsed ? 20 : 13"
+        :rows="collapsed ? 22 : 14"
         resize="vertical"
         class="mx-auto w-full max-w-[768px]"
         placeholder="记点什么…（支持 Markdown、$公式$，可直接粘贴图片）"
@@ -304,13 +338,6 @@ const queryFolders = (q, cb) => {
             </li>
           </ul>
         </aside>
-      </div>
-
-      <div class="flex gap-2">
-        <el-button type="primary" class="!active:scale-95 transition-transform" @click="onSave">保存</el-button>
-        <el-button type="danger" plain :disabled="!currentId" class="!active:scale-95 transition-transform" @click="onDelete">
-          删除
-        </el-button>
       </div>
     </div>
   </div>
