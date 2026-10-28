@@ -218,7 +218,7 @@ const queryFolders = (q, cb) => {
 <template>
   <!-- 不再有卡片容器：标题行 + 正文直接坐在应用背景上，控件全部收纳进标题行右侧 -->
   <div v-if="current" class="flex flex-col">
-    <div class="mx-auto flex w-full max-w-[768px] items-center gap-1.5 py-2 select-none">
+    <div class="flex w-full items-center gap-1.5 py-2 select-none">
       <el-icon
         class="cursor-pointer text-tx3 transition-transform duration-150 hover:text-tx1"
         :class="collapsed ? '' : 'rotate-90'"
@@ -269,7 +269,7 @@ const queryFolders = (q, cb) => {
     </div>
 
     <!-- 展开态设置面板：标题 / 元数据 / 文件夹+标签 -->
-    <div v-show="!collapsed" class="mx-auto flex w-full max-w-[768px] flex-col gap-3 pb-3">
+    <div v-show="!collapsed" class="flex w-full flex-col gap-3 pb-3">
       <el-input
         v-model="current.title"
         placeholder="标题（留空自动取内容首行）"
@@ -308,13 +308,13 @@ const queryFolders = (q, cb) => {
         type="textarea"
         :autosize="{ minRows: collapsed ? 20 : 14, maxRows: 60 }"
         resize="none"
-        class="note-plain-input mx-auto w-full max-w-[768px]"
+        class="note-plain-input w-full"
         placeholder="记点什么…（支持 Markdown、$公式$，可直接粘贴图片）"
         @paste="onPaste"
       />
-      <div v-else class="flex justify-center gap-8">
-        <!-- 宽度由外层容器定（768px ≈ 72 中文字符），prose 自身的 65ch 上限在这里不需要 -->
-        <div class="w-full min-w-0 max-w-[768px]">
+      <div v-else class="flex gap-8">
+        <!-- 宽度随容器自适应（页宽 - 目录），prose 自身的 65ch 上限在下面被 max-w-none 解除 -->
+        <div class="min-w-0 flex-1">
           <div
             ref="previewRef"
             class="prose prose-sm min-h-[280px] max-w-none"

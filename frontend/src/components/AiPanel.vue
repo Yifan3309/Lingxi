@@ -34,7 +34,7 @@ async function onEnrich() {
 </script>
 
 <template>
-  <div v-if="current && currentId" class="mx-auto w-full max-w-[768px]">
+  <div v-if="current && currentId" class="w-full">
     <!-- 收起态只有一行：箭头 + 标签 + 刷新；点箭头/标签展开摘要、建议标签与相关笔记 -->
     <div class="flex items-center gap-1.5 py-2">
       <el-icon
