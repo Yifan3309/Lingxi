@@ -214,12 +214,9 @@ const queryFolders = (q, cb) => {
 </script>
 
 <template>
-  <div v-if="current" class="bg-surface rounded-xl shadow-sm ring-1 ring-line/70 flex flex-col overflow-hidden">
-    <!--
-      单行顶栏：只放「标题 + 一个保存 + 图标簇」。
-      编辑/预览、插入图片、属性、删除全部收进图标按钮与「更多」菜单，正文区不再有任何工具条。
-    -->
-    <div class="flex items-center gap-1.5 px-4 py-2 select-none">
+  <!-- 不再有卡片容器：标题行 + 正文直接坐在应用背景上，控件全部收纳进标题行右侧 -->
+  <div v-if="current" class="flex flex-col">
+    <div class="mx-auto flex w-full max-w-[768px] items-center gap-1.5 py-2 select-none">
       <el-icon
         class="cursor-pointer text-tx3 transition-transform duration-150 hover:text-tx1"
         :class="collapsed ? '' : 'rotate-90'"
@@ -270,7 +267,7 @@ const queryFolders = (q, cb) => {
     </div>
 
     <!-- 展开态设置面板：标题 / 元数据 / 文件夹+标签 -->
-    <div v-show="!collapsed" class="px-5 pb-4 flex flex-col gap-3 border-b border-line">
+    <div v-show="!collapsed" class="mx-auto flex w-full max-w-[768px] flex-col gap-3 border-b border-line/70 pb-4">
       <el-input
         v-model="current.title"
         placeholder="标题（留空自动取内容首行）"
@@ -298,7 +295,7 @@ const queryFolders = (q, cb) => {
     </div>
 
     <!-- 正文：编辑态是一块纯文本域，预览态是排版 + 右侧目录；不再有工具条与底部按钮 -->
-    <div class="flex flex-col gap-3 px-5 pb-5 pt-1.5">
+    <div class="flex flex-col gap-3 pb-8 pt-3">
       <el-input
         v-if="mode === 'edit'"
         ref="contentRef"

@@ -32,8 +32,8 @@ async function onEnrich() {
 </script>
 
 <template>
-  <div v-if="current && currentId" class="flex flex-col gap-3">
-    <div class="bg-surface rounded-xl shadow-sm ring-1 ring-line/70 p-4">
+  <div v-if="current && currentId" class="mx-auto flex w-full max-w-[768px] flex-col gap-6">
+    <div class="border-t border-line/70 pt-5">
       <div class="mb-2 flex items-center gap-1.5">
         <el-tooltip
           content="点标签即并入 tags；AI 只给建议，采纳与否由你决定"
@@ -71,12 +71,12 @@ async function onEnrich() {
         </div>
       </template>
       <div v-else class="text-xs text-tx3 leading-relaxed">
-        尚未生成。点「生成」让 AI 提炼一句话摘要并建议 2-5 个标签——只在你需要时调用。
+        尚未生成。点右上角刷新图标让 AI 提炼一句话摘要并建议 2-5 个标签——只在你需要时调用。
       </div>
     </div>
 
-    <div v-if="related.length" class="bg-surface rounded-xl shadow-sm ring-1 ring-line/70 p-4">
-      <div class="text-xs font-semibold text-tx2 mb-1.5 tracking-wide">🔗 相关笔记</div>
+    <div v-if="related.length" class="border-t border-line/70 pt-5">
+      <div class="mb-1.5 text-xs font-semibold tracking-wide text-tx2">相关笔记</div>
       <div
         v-for="r in related"
         :key="r.noteId"
