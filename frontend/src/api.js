@@ -4,15 +4,21 @@
  */
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-/** 普通请求超时：首屏列表一旦挂住，UI 会永远停在加载态（只有下一次操作才恢复） */
-const REQUEST_TIMEOUT_MS = 15000
+/** 默认请求超时：防止首屏请求悬挂让 UI 一直停在加载态。慢接口用 timeoutMs 单独放宽。 */
+const DEFAULT_TIMEOUT_MS = 15000
+/** 同步调 LLM 的接口（富化/剪藏）：模型慢时 15~40s 都算正常，别拿默认值卡它 */
+const LLM_TIMEOUT_MS = 120000
+/** 上传/解析类接口：大文件 + Tika + 视觉模型，给足时间 */
+const UPLOAD_TIMEOUT_MS = 300000
 
 async function request(url, options = {}) {
+  // timeoutMs 是本地约定，不能漏进 fetch 的 init
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...init } = options
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   let res
   try {
-    res = await fetch(url, { ...options, signal: options.signal || controller.signal })
+    res = await fetch(url, { ...init, signal: init.signal || controller.signal })
   } catch (err) {
     throw new Error(err?.name === 'AbortError' ? '请求超时，请重试' : String(err?.message || err))
   } finally {
@@ -54,7 +60,7 @@ export const api = {
   deleteNote: (id) => request(`/api/notes/${id}`, { method: 'DELETE' }),
   related: (id) => request(`/api/notes/${id}/related`),
   /** 显式 AI 富化（标签建议+摘要）：同步调用 LLM，返回更新后的 Note。保存不再自动触发。 */
-  enrichNote: (id) => request(`/api/notes/${id}/enrich`, { method: 'POST' }),
+  enrichNote: (id) => request(`/api/notes/${id}/enrich`, { method: 'POST', timeoutMs: LLM_TIMEOUT_MS }),
   config: () => request('/api/admin/config'),
   /** 热切换模型（无需重启）。body: {chat:{model,baseUrl?,apiKey?}, vision:{model}} */
   updateConfig: (body) =>
@@ -73,7 +79,12 @@ export const api = {
 
   /** 旧仓库一键迁移：扫描预览 / 触发（202 + 初始进度）/ 进度轮询。 */
   vaultScan: (path) =>
-    request('/api/notes/vault-import/scan', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ path }) }),
+    request('/api/notes/vault-import/scan', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ path }),
+      timeoutMs: LLM_TIMEOUT_MS
+    }),
   vaultImportStart: (path) =>
     request('/api/notes/vault-import', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ path }) }),
   vaultImportStatus: () => request('/api/notes/vault-import/status'),
@@ -82,25 +93,30 @@ export const api = {
   async uploadAsset(file) {
     const fd = new FormData()
     fd.append('file', file)
-    return request('/api/assets', { method: 'POST', body: fd })
+    return request('/api/assets', { method: 'POST', body: fd, timeoutMs: UPLOAD_TIMEOUT_MS })
   },
 
   /** 多模态导入：分级解析（Tika/视觉 LLM）建笔记，返回 Note。 */
   async importFile(file) {
     const fd = new FormData()
     fd.append('file', file)
-    return request('/api/notes/import', { method: 'POST', body: fd })
+    return request('/api/notes/import', { method: 'POST', body: fd, timeoutMs: UPLOAD_TIMEOUT_MS })
   },
 
   /** 网页剪藏：URL → 抓取正文建笔记（source=clip），可能需数秒。 */
   clipUrl: (url) =>
-    request('/api/notes/clip', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ url }) }),
+    request('/api/notes/clip', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ url }),
+      timeoutMs: LLM_TIMEOUT_MS
+    }),
 
   /** 问答附件上传（@链接-上传来源）：Tika 抽文本返回 uploadId，仅本轮上下文不入库。 */
   async uploadChatAttachment(file) {
     const fd = new FormData()
     fd.append('file', file)
-    return request('/api/chat/attachments', { method: 'POST', body: fd })
+    return request('/api/chat/attachments', { method: 'POST', body: fd, timeoutMs: UPLOAD_TIMEOUT_MS })
   },
 
   /**

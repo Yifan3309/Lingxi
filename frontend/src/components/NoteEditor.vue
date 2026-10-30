@@ -76,13 +76,23 @@ function observeHeadings(root) {
   sync()
 }
 
-watch([previewHtml, mode], () => nextTick(refreshPreview), { immediate: true })
+/**
+ * 只在预览态订阅 HTML：previewHtml 是 computed(renderMarkdown(content))，
+ * 如果直接作为 watch 源，编辑态每敲一个字都会做一次完整解析（长笔记会明显发涩）。
+ */
+watch(
+  [() => (mode.value === 'preview' ? previewHtml.value : null), mode],
+  () => nextTick(refreshPreview),
+  { immediate: true }
+)
 
 onBeforeUnmount(() => headingObserver?.disconnect())
 
 function goTo(id) {
   activeHeading.value = id
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // 限定在预览容器内查找，避免和页面其它同 id 元素撞车
+  const target = previewRef.value?.querySelector(`#${CSS.escape(id)}`)
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 /** 代码块复制：事件委托，避免给每个按钮单独解绑。 */

@@ -62,18 +62,24 @@ export function useNotes() {
 
   async function save(note) {
     saveState.value = 'saving'
-    const saved = currentId.value
-      ? await api.updateNote(currentId.value, note)
-      : await api.createNote(note)
-    await refresh()
-    await select(saved.id)
-    saveState.value = 'saved'
-    setTimeout(() => {
-      if (saveState.value === 'saved') {
-        saveState.value = 'idle'
-      }
-    }, 4000)
-    return saved
+    try {
+      const saved = currentId.value
+        ? await api.updateNote(currentId.value, note)
+        : await api.createNote(note)
+      await refresh()
+      await select(saved.id)
+      saveState.value = 'saved'
+      setTimeout(() => {
+        if (saveState.value === 'saved') {
+          saveState.value = 'idle'
+        }
+      }, 4000)
+      return saved
+    } catch (err) {
+      // 失败要把顶栏从「保存中…」拉回来，否则会一直挂着
+      saveState.value = 'idle'
+      throw err
+    }
   }
 
   async function remove(id) {

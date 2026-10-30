@@ -9,11 +9,27 @@ const related = ref([])
 const enriching = ref(false)
 /** 默认收起：AI 内容按需展开，编辑区保持干净 */
 const open = ref(false)
+/** 已为哪篇笔记拉过相关推荐：避免收起状态下也发请求，也避免重复拉 */
+let relatedFor = null
 
-watch(currentId, async (id) => {
+async function loadRelated(id) {
+  relatedFor = id
+  related.value = await api.related(id).catch(() => [])
+}
+
+watch(currentId, (id) => {
   related.value = []
-  if (id) {
-    related.value = await api.related(id).catch(() => [])
+  relatedFor = null
+  if (open.value && id) {
+    loadRelated(id)
+  }
+})
+
+/** 首次展开时才去取相关笔记（多数会话根本不展开，这一发请求可以省掉） */
+watch(open, (expanded) => {
+  const id = currentId.value
+  if (expanded && id && relatedFor !== id) {
+    loadRelated(id)
   }
 })
 
