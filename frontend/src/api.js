@@ -65,6 +65,9 @@ export const api = {
   /** 热切换模型（无需重启）。body: {chat:{model,baseUrl?,apiKey?}, vision:{model}} */
   updateConfig: (body) =>
     request('/api/admin/config', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
+  /** 用表单值发 ping 验证连通性（不落库不切换）。 */
+  testConfig: (body) =>
+    request('/api/admin/config/test', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body), timeoutMs: 45000 }),
   history: (sessionId) => request(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`),
 
   /** M3 知识图谱：节点（笔记+标签）与边（共标签/语义近邻）。 */

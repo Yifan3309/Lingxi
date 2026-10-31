@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +69,19 @@ public class AdminController {
         out.put("vision", Map.of(
                 "model", effectiveVisionModel(),
                 "overridden", runtime.visionModel() != null));
+        // 每 provider 的记忆槽：对话框切 provider 时回填表单用
+        Map<String, Object> profilesOut = new LinkedHashMap<>();
+        for (String p : List.of("openai-compatible", "ollama")) {
+            Map<String, String> s = runtime.slot(p);
+            Map<String, Object> prof = new LinkedHashMap<>();
+            prof.put("model", s.get("model"));
+            prof.put("baseUrl", s.get("baseUrl"));
+            if (!"ollama".equals(p)) {
+                prof.put("apiKey", s.get("apiKey") == null ? null : mask(s.get("apiKey")));
+            }
+            profilesOut.put(p, prof);
+        }
+        out.put("profiles", profilesOut);
         return out;
     }
 
@@ -87,33 +101,73 @@ public class AdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "不支持的 provider: " + provider + "（可选 openai-compatible / ollama）");
         }
-        String chatModelName = body.chat() == null ? null : blankToNull(body.chat().model());
-        String baseUrl = body.chat() == null ? null : blankToNull(body.chat().baseUrl());
+        // model/baseUrl 原样传递：null = 槽内保持，"" = 清除该覆盖（回退 yml），非空 = 覆盖。
+        // 每 provider 一份槽、互不覆盖——切换 provider 只是换激活槽，旧的云端/本地配置都还在。
+        String chatModelName = body.chat() == null ? null : body.chat().model();
+        String baseUrl = body.chat() == null ? null : body.chat().baseUrl();
         String apiKey = body.chat() == null ? null : blankToNull(body.chat().apiKey());
         String visionModelName = body.vision() == null ? null : blankToNull(body.vision().model());
-
-        String prevProvider = runtime.effectiveChatProvider(props.chat().provider());
-        String nextProvider = provider != null ? provider : prevProvider;
-        boolean providerChanged = !nextProvider.equals(prevProvider);
 
         if (chatModelName == null && baseUrl == null && apiKey == null
                 && visionModelName == null && provider == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "没有可更新的字段");
         }
 
-        // 切换 provider 时清空跨 provider 的旧覆盖（除非本次请求带了新值）——地址/密钥/模型名都是 provider 专属
-        String savedModel = providerChanged && chatModelName == null ? null
-                : chatModelName != null ? chatModelName : runtime.chatModel();
-        String savedBaseUrl = providerChanged && baseUrl == null ? null
-                : baseUrl != null ? baseUrl : runtime.chatBaseUrl();
-        String savedApiKey = providerChanged && apiKey == null ? null
-                : apiKey != null ? apiKey : runtime.chatApiKey();
-        runtime.save(nextProvider, savedModel, savedBaseUrl, savedApiKey,
+        String nextProvider = provider != null ? provider : runtime.effectiveChatProvider(props.chat().provider());
+        runtime.save(nextProvider, chatModelName, baseUrl, apiKey,
                 visionModelName != null ? visionModelName : runtime.visionModel());
 
         rebuildChat(nextProvider);
         rebuildVision();
         return config();
+    }
+
+    /** 用表单值构建一次性模型发 ping，验证连通性；不触碰 runtime 覆盖与热切换 Bean。 */
+    @PostMapping("/config/test")
+    public Map<String, Object> testConfig(@RequestBody ModelUpdateRequest body) {
+        String provider = body.chat() != null && blankToNull(body.chat().provider()) != null
+                ? blankToNull(body.chat().provider())
+                : runtime.effectiveChatProvider(props.chat().provider());
+        boolean ollama = "ollama".equals(provider);
+        AiModelConfig.EffectiveChat c = AiModelConfig.resolveChat(props, runtime);
+        String model = pick(body.chat() != null ? body.chat().model() : null, c.model());
+        String url = pick(body.chat() != null ? body.chat().baseUrl() : null, c.baseUrl());
+        String key = ollama ? null : pick(body.chat() != null ? body.chat().apiKey() : null, c.apiKey());
+        long start = System.nanoTime();
+        try {
+            ChatModel probe = ollama
+                    ? OllamaChatModel.builder().baseUrl(url).modelName(model).timeout(Duration.ofSeconds(30)).build()
+                    : OpenAiChatModel.builder().baseUrl(url).apiKey(key).modelName(model).timeout(Duration.ofSeconds(30)).build();
+            String reply = probe.chat("ping");
+            return Map.of("ok", true, "latencyMs", (System.nanoTime() - start) / 1_000_000,
+                    "reply", reply == null ? "" : reply);
+        } catch (Exception e) {
+            return Map.of("ok", false, "latencyMs", (System.nanoTime() - start) / 1_000_000,
+                    "error", friendlyTestError(e));
+        }
+    }
+
+    /** 常见连通性错误的白话提示（测试按钮用于安抚，不求诊断完备）。 */
+    private static String friendlyTestError(Exception e) {
+        String m = String.valueOf(e.getMessage() == null ? e : e.getMessage());
+        String low = m.toLowerCase();
+        if (low.contains("connection refused")) {
+            return "无法连接（服务未启动或地址不对）";
+        }
+        if (low.contains("404")) {
+            return "地址或模型不存在（检查 base-url 与模型名）";
+        }
+        if (low.contains("timed out") || low.contains("timeout")) {
+            return "连接超时（模型可能在冷加载，稍后再试）";
+        }
+        if (low.contains("401") || low.contains("403") || low.contains("unauthorized")) {
+            return "鉴权失败（检查 api-key）";
+        }
+        return m;
+    }
+
+    private static String pick(String v, String fallback) {
+        return v != null && !v.isBlank() ? v.trim() : fallback;
     }
 
     /* ---- 全量重嵌入维护（R1 对策，M3） ---- */
@@ -185,8 +239,10 @@ public class AdminController {
         if (!"ollama".equals(provider)) {
             chat.put("apiKey", mask(c.apiKey()));
         }
-        chat.put("overridden", runtime.chatProvider() != null || runtime.chatModel() != null
-                || runtime.chatBaseUrl() != null || runtime.chatApiKey() != null);
+        Map<String, String> slot = runtime.slot(provider);
+        chat.put("overridden", runtime.chatProvider() != null || slot.get("model") != null
+                || slot.get("baseUrl") != null
+                || (!"ollama".equals(provider) && slot.get("apiKey") != null));
         return chat;
     }
 

@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Configuration;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 按 app.ai.* 配置 + 运行时覆盖（RuntimeModelConfig）装配模型 Bean。
@@ -108,18 +109,20 @@ public class AiModelConfig {
         AiProperties.Chat cfg = props.chat();
         AiProperties.OpenAiCompatible oc = cfg.openaiCompatible();
         AiProperties.Ollama ol = cfg.ollama();
-        boolean ollama = "ollama".equals(runtime.effectiveChatProvider(cfg.provider()));
-        // ollama 原生端点挂在根路径（/api/chat）；历史遗留的 openai 风格运行时覆盖（以 /v1 结尾）
+        String provider = runtime.effectiveChatProvider(cfg.provider());
+        boolean ollama = "ollama".equals(provider);
+        Map<String, String> slot = runtime.slot(provider);
+        // ollama 原生端点挂在根路径（/api/chat）；openai 风格覆盖（以 /v1 结尾）
         // 会把请求打到 /v1/api/chat 直接 404——视作跨 provider 串扰丢弃，退回 yml 的 ollama 地址
-        String runtimeBaseUrl = runtime.chatBaseUrl();
+        String runtimeBaseUrl = slot.get("baseUrl");
         if (ollama && runtimeBaseUrl != null && runtimeBaseUrl.endsWith("/v1")) {
             runtimeBaseUrl = null;
         }
         return new EffectiveChat(
                 firstNonBlank(runtimeBaseUrl, ollama ? ol.baseUrl() : oc.baseUrl()),
                 // ollama 无密钥概念：显式置 null（不能走 firstNonBlank——候选全空会抛"模型配置缺失"，曾致 runtime provider=ollama 时启动失败）
-                ollama ? null : firstNonBlank(runtime.chatApiKey(), oc.apiKey()),
-                firstNonBlank(runtime.chatModel(), ollama ? ol.chatModel() : oc.chatModel()),
+                ollama ? null : firstNonBlank(slot.get("apiKey"), oc.apiKey()),
+                firstNonBlank(slot.get("model"), ollama ? ol.chatModel() : oc.chatModel()),
                 ollama ? ol.temperature() : oc.temperature(),
                 ollama ? ol.timeout() : oc.timeout());
     }
@@ -130,8 +133,9 @@ public class AiModelConfig {
         // chat 的运行时地址/密钥是 provider 专属的：chat 在 ollama 时它们指向本地原生端点，
         // 带给 vision（OpenAI 客户端）会打到 ollama 上（模型不存在/路径不对）——与 resolveChat 的守卫同族
         boolean ollama = "ollama".equals(runtime.effectiveChatProvider(props.chat().provider()));
-        String runtimeBaseUrl = ollama ? null : runtime.chatBaseUrl();
-        String runtimeApiKey = ollama ? null : runtime.chatApiKey();
+        Map<String, String> slot = runtime.slot(ollama ? "ollama" : "openai-compatible");
+        String runtimeBaseUrl = ollama ? null : slot.get("baseUrl");
+        String runtimeApiKey = ollama ? null : slot.get("apiKey");
         String baseUrl = firstNonBlank(runtimeBaseUrl, v.baseUrl(), oc.baseUrl());
         String apiKey = firstNonBlank(runtimeApiKey, v.apiKey(), oc.apiKey());
         String model = firstNonBlank(runtime.visionModel(), v.model());

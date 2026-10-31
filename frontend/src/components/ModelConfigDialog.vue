@@ -15,12 +15,39 @@ const chatBaseUrl = ref('')
 const chatApiKey = ref('')
 const visionModel = ref('')
 
-/* 常用模型速选（按 provider 分组） */
-const chatPresets = {
-  'openai-compatible': ['glm-4-flash', 'glm-4-flashx', 'glm-4-air', 'glm-4.6', 'deepseek-chat'],
-  ollama: ['qwen3:8b', 'qwen2.5:7b', 'llama3.1:8b', 'deepseek-r1:8b', 'mistral:7b']
-}
+/* 模型联想 = 本 provider 实际配置过的模型（localStorage 按 provider 记忆），不再用内置预置 */
+const MODEL_HISTORY_KEY = 'lx_model_history'
 const visionPresets = ['glm-4v-flash', 'glm-4v-plus', 'qwen-vl-plus']
+
+function modelHistory(provider) {
+  let hist = {}
+  try {
+    hist = JSON.parse(localStorage.getItem(MODEL_HISTORY_KEY) || '{}')
+  } catch {
+    hist = {}
+  }
+  return hist[provider] || []
+}
+
+function rememberModel(provider, model) {
+  if (!model) {
+    return
+  }
+  let hist = {}
+  try {
+    hist = JSON.parse(localStorage.getItem(MODEL_HISTORY_KEY) || '{}')
+  } catch {
+    hist = {}
+  }
+  hist[provider] = [model, ...(hist[provider] || []).filter(m => m !== model)].slice(0, 8)
+  localStorage.setItem(MODEL_HISTORY_KEY, JSON.stringify(hist))
+}
+
+function modelSuggestions(q, cb) {
+  cb(modelHistory(chatProvider.value)
+    .filter(m => !q || m.toLowerCase().includes(q.toLowerCase()))
+    .map(m => ({ value: m })))
+}
 
 const isOllama = computed(() => chatProvider.value === 'ollama')
 const modelPlaceholder = computed(() =>
@@ -28,10 +55,11 @@ const modelPlaceholder = computed(() =>
 const baseUrlPlaceholder = computed(() =>
   isOllama.value ? 'http://localhost:11434' : '留空用配置文件（换服务商时填，如 DeepSeek）')
 
-/* 切 provider：清空具体字段，让新 provider 走自己的默认值（后端也会清掉旧覆盖防串扰） */
-function onProviderChange() {
-  chatModel.value = ''
-  chatBaseUrl.value = ''
+/* 切 provider：从该 provider 的记忆槽回填表单（每家一份配置互不覆盖，来回切不重填） */
+function onProviderChange(p) {
+  const prof = config.value?.profiles?.[p] || {}
+  chatModel.value = prof.model || ''
+  chatBaseUrl.value = prof.baseUrl || ''
   chatApiKey.value = ''
 }
 
@@ -48,6 +76,7 @@ watch(open, async (v) => {
     chatBaseUrl.value = config.value.chat?.baseUrl || ''
     visionModel.value = config.value.vision?.model || ''
     chatApiKey.value = '' // 密钥脱敏不回填，留空=不修改
+    rememberModel(chatProvider.value, config.value.chat?.model || '') // 当前生效模型计入联想历史
   }
   // 重嵌入任务进行中（上个会话遗留）则接上轮询
   const st = await api.reembedStatus().catch(() => null)
@@ -99,20 +128,20 @@ function startPoll() {
 async function save() {
   saving.value = true
   try {
+    // 表单即真相：model/baseUrl 全量发送（空串 = 清除该覆盖回退 yml），其余 provider 的槽不受影响
     const body = {
-      chat: { provider: chatProvider.value },
+      chat: {
+        provider: chatProvider.value,
+        model: chatModel.value.trim(),
+        baseUrl: chatBaseUrl.value.trim()
+      },
       vision: { model: visionModel.value.trim() || undefined }
-    }
-    if (chatModel.value.trim()) {
-      body.chat.model = chatModel.value.trim()
-    }
-    if (chatBaseUrl.value.trim() && chatBaseUrl.value.trim() !== config.value?.chat?.baseUrl) {
-      body.chat.baseUrl = chatBaseUrl.value.trim()
     }
     if (!isOllama.value && chatApiKey.value.trim()) {
       body.chat.apiKey = chatApiKey.value.trim()
     }
     config.value = await api.updateConfig(body)
+    rememberModel(chatProvider.value, chatModel.value.trim())
     ElMessage.success('已热切换，新对话即刻生效（无需重启）')
     emit('saved', config.value)
     open.value = false
@@ -120,6 +149,35 @@ async function save() {
     ElMessage.error(`保存失败：${e?.message || e}`)
   } finally {
     saving.value = false
+  }
+}
+
+/** 保存前用当前表单值发 ping 验证连通性（不落库、不切换）。 */
+const testing = ref(false)
+async function testConn() {
+  testing.value = true
+  try {
+    const body = {
+      chat: {
+        provider: chatProvider.value,
+        model: chatModel.value.trim(),
+        baseUrl: chatBaseUrl.value.trim()
+      }
+    }
+    if (!isOllama.value && chatApiKey.value.trim()) {
+      body.chat.apiKey = chatApiKey.value.trim()
+    }
+    const r = await api.testConfig(body)
+    const secs = (r.latencyMs / 1000).toFixed(1)
+    if (r.ok) {
+      ElMessage.success(`连接正常（${secs}s）`)
+    } else {
+      ElMessage.error(`测试失败（${secs}s）：${r.error}`)
+    }
+  } catch (e) {
+    ElMessage.error(`测试失败：${e?.message || e}`)
+  } finally {
+    testing.value = false
   }
 }
 </script>
@@ -142,7 +200,7 @@ async function save() {
           </el-radio-group>
           <el-autocomplete
             v-model="chatModel"
-            :fetch-suggestions="(q, cb) => cb((chatPresets[chatProvider] || []).filter(p => !q || p.includes(q)).map(p => ({ value: p })))"
+            :fetch-suggestions="modelSuggestions"
             :placeholder="modelPlaceholder"
             clearable
           >
@@ -191,6 +249,9 @@ async function save() {
 
     <template #footer>
       <el-button @click="open = false">取消</el-button>
+      <el-button :loading="testing" class="!active:scale-95 transition-transform" @click="testConn">
+        测试连接
+      </el-button>
       <el-button type="primary" :loading="saving" class="!active:scale-95 transition-transform" @click="save">
         保存并切换
       </el-button>

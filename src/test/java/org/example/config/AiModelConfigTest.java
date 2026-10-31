@@ -122,13 +122,30 @@ class AiModelConfigTest {
 
     @Test
     @DisplayName("chat 覆盖值首尾空白在 apply 时裁掉，纯空白等同未覆盖")
-    void applyTrimsAndBlanksOut() {
+    void applyTrimsAndBlanks() {
         RuntimeModelConfig r = runtime(" ollama ", "  ", null, "", null);
 
         assertThat(r.chatProvider()).isEqualTo("ollama");
-        assertThat(r.chatModel()).isNull();
-        assertThat(r.chatBaseUrl()).isNull();
+        assertThat(r.activeSlot().get("model")).isNull();
+        assertThat(r.activeSlot().get("baseUrl")).isNull();
         assertThat(r.effectiveChatProvider("openai-compatible")).isEqualTo("ollama");
         assertThat(r.effectiveChatProvider(null)).isEqualTo("ollama");
+    }
+
+    @Test
+    @DisplayName("切换 provider 不覆盖对方槽位：ollama 保存后云端槽原样保留，来回切不丢配置")
+    void providerSwitchKeepsBothSlots() {
+        RuntimeModelConfig r = runtime("openai-compatible", "deepseek-chat", "https://api.deepseek.com/v1", "rt-key", null);
+        r.apply("ollama", "qwen_3.5_2BQ4:latest", "http://localhost:11434", null, null);
+
+        assertThat(r.chatProvider()).isEqualTo("ollama");
+        assertThat(r.slot("openai-compatible").get("model")).isEqualTo("deepseek-chat");
+        assertThat(r.slot("openai-compatible").get("baseUrl")).isEqualTo("https://api.deepseek.com/v1");
+        assertThat(r.slot("ollama").get("model")).isEqualTo("qwen_3.5_2BQ4:latest");
+        // 切回云端：云端槽完整恢复
+        r.apply("openai-compatible", null, null, null, null);
+        AiModelConfig.EffectiveChat c = AiModelConfig.resolveChat(props(), r);
+        assertThat(c.baseUrl()).isEqualTo("https://api.deepseek.com/v1");
+        assertThat(c.model()).isEqualTo("deepseek-chat");
     }
 }

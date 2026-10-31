@@ -1,0 +1,32 @@
+$kind: http-request
+name: config-test (connectivity probe)
+method: POST
+url: '{{baseUrl}}/api/admin/config/test'
+order: 2100
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "chat": {
+        "provider": "ollama",
+        "model": "qwen3:8b",
+        "baseUrl": "http://localhost:11434"
+      }
+    }
+description: 用表单值构建一次性模型发 ping 验证连通性（不落库、不切换 Bean）。ok=false 时 error 带白话原因。
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('config test: status 200', () => pm.response.to.have.status(200));
+      const r = pm.response.json();
+      pm.test('config test: returns verdict with latency', () => {
+        pm.expect(r.ok).to.be.a('boolean');
+        pm.expect(r.latencyMs).to.be.a('number');
+      });
+      pm.test('config test: probe reaches ollama (ok=true)', () => {
+        pm.expect(r.ok, r.error || 'connectivity').to.be.true;
+      });
