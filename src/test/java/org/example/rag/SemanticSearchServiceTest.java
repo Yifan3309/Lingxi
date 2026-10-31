@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -46,13 +47,22 @@ class SemanticSearchServiceTest {
         embeddingModel = mock(EmbeddingModel.class);
         when(embeddingModel.embed(anyString()))
                 .thenReturn(Response.from(Embedding.from(new float[]{1, 0})));
-        storeService = new EmbeddingStoreService(props());
-        storeService.addAll(
-                List.of(UUID.randomUUID().toString(), UUID.randomUUID().toString(), UUID.randomUUID().toString()),
+        var chunkRepo = mock(org.example.repository.NoteChunkRepository.class);
+        var noteRepo = mock(org.example.repository.NoteRepository.class);
+        when(chunkRepo.findAll()).thenReturn(List.of());
+        when(chunkRepo.findAllById(any())).thenReturn(List.of());
+        when(chunkRepo.saveAll(any())).thenReturn(List.of());
+        when(noteRepo.findAll()).thenReturn(List.of());
+        storeService = new EmbeddingStoreService(chunkRepo, noteRepo, props());
+        storeService.replaceAllByNoteId("n1",
+                List.of(UUID.randomUUID().toString(), UUID.randomUUID().toString()),
                 List.of(Embedding.from(new float[]{1, 0}),                 // n1 第 0 块：完全命中
-                        Embedding.from(new float[]{0.8f, 0.6f}),           // n1 第 1 块
-                        Embedding.from(new float[]{0.1f, 1f})),            // n2
-                List.of(segment("n1", "笔记一", 0), segment("n1", "笔记一", 1), segment("n2", "笔记二", 0)));
+                        Embedding.from(new float[]{0.8f, 0.6f})),           // n1 第 1 块
+                List.of(segment("n1", "笔记一", 0), segment("n1", "笔记一", 1)));
+        storeService.replaceAllByNoteId("n2",
+                List.of(UUID.randomUUID().toString()),
+                List.of(Embedding.from(new float[]{0.1f, 1f})),            // n2
+                List.of(segment("n2", "笔记二", 0)));
         reranker = mock(ObjectProvider.class);
         when(reranker.getIfAvailable()).thenReturn(null);
     }

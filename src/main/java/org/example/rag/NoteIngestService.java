@@ -83,6 +83,7 @@ public class NoteIngestService {
             ids.add(chunkId);
 
             NoteChunk row = new NoteChunk();
+            row.setId(chunkId); // 行主键 = 向量库条目 id：重启重建与来源引用共用同一身份
             row.setNoteId(note.getId());
             row.setChunkIndex(i);
             row.setText(chunks.get(i).text());

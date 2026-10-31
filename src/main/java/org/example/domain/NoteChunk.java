@@ -11,7 +11,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * 笔记分块的元数据行。向量本体存向量库（embeddings.json），经 chunk_id 关联；
+ * 笔记分块：正文与向量本体同库同事务（embedding BLOB），行主键即向量库条目 id；
  * 记录 embedding_model 供更换模型后判断哪些块需要重嵌入（风险 R1）。
  */
 @Entity
@@ -31,6 +31,10 @@ public class NoteChunk {
     @Column(length = 65536)
     private String text;
 
+    /** 向量本体：维度×4 字节原始浮点（二进制直存，无人类可读开销）；4096 容纳 1024 维模型 */
+    @Column(name = "embedding", length = 4096)
+    private byte[] embedding;
+
     @Column(name = "embedding_model", nullable = false)
     private String embeddingModel;
 
@@ -46,12 +50,15 @@ public class NoteChunk {
     }
 
     public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     public String getNoteId() { return noteId; }
     public void setNoteId(String noteId) { this.noteId = noteId; }
     public int getChunkIndex() { return chunkIndex; }
     public void setChunkIndex(int chunkIndex) { this.chunkIndex = chunkIndex; }
     public String getText() { return text; }
     public void setText(String text) { this.text = text; }
+    public byte[] getEmbedding() { return embedding; }
+    public void setEmbedding(byte[] embedding) { this.embedding = embedding; }
     public String getEmbeddingModel() { return embeddingModel; }
     public void setEmbeddingModel(String embeddingModel) { this.embeddingModel = embeddingModel; }
     public Instant getCreatedAt() { return createdAt; }

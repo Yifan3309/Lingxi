@@ -67,3 +67,23 @@ src-tauri/gen/
 
 # Agent workspace data (memory/logs)
 .workbuddy/
+
+### 密钥与本地环境（推远端前务必保留） ###
+.env
+.env.*
+!.env.example
+*.local
+
+### 数据库兜底：即便 data/ 被改名也不会误提交 ###
+*.mv.db
+*.trace.db
+
+### 编辑器 / 系统杂项 ###
+Thumbs.db
+desktop.ini
+*.bak
+*.orig
+
+### 前端构建缓存 / Python 测试缓存 ###
+frontend/.vite/
+reranker-service/.pytest_cache/
