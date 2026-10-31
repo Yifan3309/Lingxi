@@ -114,4 +114,4 @@ mvn test                # unit tests (offline, seconds, no models/keys needed)
 
 ## License
 
-<!-- TODO: add once a license is chosen -->
+Released under the [MIT License](LICENSE).
