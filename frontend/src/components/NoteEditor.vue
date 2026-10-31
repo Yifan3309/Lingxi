@@ -2,12 +2,22 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useNotes, useFolders, relTime } from '../composables/useNotes'
+import { useUi } from '../composables/useUi'
 import { api } from '../api'
 import { decoratePreview, renderMarkdown } from '../markdown'
 import AiPanel from './AiPanel.vue'
 
 const { current, currentId, save, remove, saveState, notes } = useNotes()
 const folders = useFolders(notes)
+
+/* ---- 斜杠命令入口（/note）：展开属性面板并聚焦标题（标题在编辑器里填） ---- */
+const { editorFocusTick } = useUi()
+const titleInput = ref(null)
+watch(editorFocusTick, async () => {
+  collapsed.value = false
+  await nextTick()
+  titleInput.value?.focus?.()
+})
 
 /**
  * 面板收起态：只留紧凑顶栏（标题 + 文件夹 chip + 保存态），内容区最大化；
@@ -281,6 +291,7 @@ const queryFolders = (q, cb) => {
     <!-- 展开态设置面板：标题 / 元数据 / 文件夹+标签 -->
     <div v-show="!collapsed" class="flex w-full flex-col gap-3 pb-3">
       <el-input
+        ref="titleInput"
         v-model="current.title"
         placeholder="标题（留空自动取内容首行）"
         class="!mt-4"
@@ -357,3 +368,4 @@ const queryFolders = (q, cb) => {
     <el-empty description="选择左侧笔记，或新建一篇" />
   </div>
 </template>
+

@@ -42,3 +42,8 @@ scripts:
         pm.expect(done.sources[0]).to.have.property('score');
         pm.expect(done.sources[0].excerpt).to.be.a('string').and.not.be.empty;
       });
+      pm.test('rag chat: sources carry chunkIndex for paragraph localization', () => {
+        const doneMatch2 = body.match(/event: ?done\r?\ndata: ?(.+)/);
+        const sources = doneMatch2 ? JSON.parse(doneMatch2[1]).sources : [];
+        pm.expect(sources.some(s => typeof s.chunkIndex === 'number'), 'at least one RAG source has chunkIndex').to.be.true;
+      });

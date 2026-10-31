@@ -60,7 +60,7 @@ public class NoteIngestService {
      */
     @Transactional
     public void ingest(Note note) {
-        List<String> chunks = NoteChunker.chunk(note.getTitle(), note.getContent(), ragProps.chunkTargetChars());
+        List<NoteChunker.Chunk> chunks = NoteChunker.chunk(note.getTitle(), note.getContent(), ragProps.chunkTargetChars());
         if (chunks.isEmpty()) {
             chunkRepo.deleteByNoteId(note.getId());
             chunkRepo.flush();
@@ -79,13 +79,13 @@ public class NoteIngestService {
                     .put("chunk_id", chunkId)
                     .put("title", note.getTitle())
                     .put("chunk_index", i);
-            segments.add(TextSegment.from(chunks.get(i), metadata));
+            segments.add(TextSegment.from(chunks.get(i).text(), metadata));
             ids.add(chunkId);
 
             NoteChunk row = new NoteChunk();
             row.setNoteId(note.getId());
             row.setChunkIndex(i);
-            row.setText(chunks.get(i));
+            row.setText(chunks.get(i).text());
             row.setEmbeddingModel(currentEmbeddingModelName());
             rows.add(row);
         }
@@ -104,6 +104,11 @@ public class NoteIngestService {
         chunkRepo.flush();
         storeService.replaceAllByNoteId(note.getId(), ids, embeddings, segments);
         log.info("笔记 {} 入库完成：{} 个分块", note.getId(), chunks.size());
+    }
+
+    /** 读时重算分块布局（不落库）：index 与向量元数据里的 chunk_index 对应，供来源定位原文。 */
+    public List<NoteChunker.Chunk> layout(Note note) {
+        return NoteChunker.chunk(note.getTitle(), note.getContent(), ragProps.chunkTargetChars());
     }
 
     private String currentEmbeddingModelName() {

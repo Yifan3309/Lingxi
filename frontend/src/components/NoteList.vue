@@ -1,11 +1,19 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useNotes, parseTags, relTime } from '../composables/useNotes'
+import { useUi } from '../composables/useUi'
 import { api } from '../api'
 import VaultImportDialog from './VaultImportDialog.vue'
 
 const { notes, currentId, select, newNote, searchMode, searchText, refresh, loading, loadError, moveToFolder } = useNotes()
+
+/* ---- 斜杠命令入口（/import /vault）：useUi 请求计数通知属主组件响应 ---- */
+const { importTick, vaultTick } = useUi()
+watch(importTick, () => pickImport())
+watch(vaultTick, () => {
+  vaultVisible.value = true
+})
 
 /* ---- 多模态导入（Tika + 视觉 LLM 分级解析） ---- */
 const importInput = ref(null)

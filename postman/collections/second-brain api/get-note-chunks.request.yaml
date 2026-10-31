@@ -1,0 +1,40 @@
+$kind: http-request
+name: get note chunks (layout)
+method: GET
+url: '{{baseUrl}}/api/notes/{{noteId}}/chunks'
+order: 9650
+description: RAG 来源定位用的分块布局（读时计算，不落库）。index 与 chat done 帧 sources 里的 chunk_index 对应；[charStart, charEnd) 是该块正文在当前 content 中的原文区间。
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('note chunks: status 200', () => pm.response.to.have.status(200));
+      const chunks = pm.response.json();
+      pm.test('note chunks: non-empty layout array', () => {
+        pm.expect(chunks).to.be.an('array').with.lengthOf.at.least(1);
+      });
+      pm.test('note chunks: index ascending from 0, fields well-typed', () => {
+        chunks.forEach((c, i) => {
+          pm.expect(c.index, `index at ${i}`).to.equal(i);
+          pm.expect(c.charStart, `charStart at ${i}`).to.be.a('number');
+          pm.expect(c.charEnd, `charEnd at ${i}`).to.be.a('number');
+          pm.expect(c.headingPath, `headingPath at ${i}`).to.satisfy(v => typeof v === 'string' || v === null);
+        });
+        for (let i = 1; i < chunks.length; i++) {
+          pm.expect(chunks[i].charStart, `charStart monotonic at ${i}`)
+            .to.be.at.least(chunks[i - 1].charStart);
+        }
+      });
+      // 区间必须落在当前正文范围内：拉一次笔记详情对账
+      pm.sendRequest(`${pm.variables.get('baseUrl')}/api/notes/${pm.collectionVariables.get('noteId')}`, (err, res) => {
+        pm.test('note chunks: ranges inside current content length', () => {
+          pm.expect(err).to.be.null;
+          pm.expect(res).to.have.property('code', 200);
+          const len = res.json().content.length;
+          chunks.forEach(c => {
+            pm.expect(c.charStart).to.be.at.least(0);
+            pm.expect(c.charEnd).to.be.at.most(len);
+            pm.expect(c.charStart).to.be.at.most(c.charEnd);
+          });
+        });
+      });

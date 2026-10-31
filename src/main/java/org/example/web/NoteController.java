@@ -1,9 +1,12 @@
 package org.example.web;
 
 import org.example.domain.Note;
+import org.example.rag.NoteChunker;
+import org.example.rag.NoteIngestService;
 import org.example.rag.SemanticSearchService;
 import org.example.service.NoteEnrichService;
 import org.example.service.NoteService;
+import org.example.web.dto.ChunkLayout;
 import org.example.web.dto.NoteRequest;
 import org.example.web.dto.NoteSummary;
 import org.example.web.dto.RelatedNote;
@@ -19,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -32,11 +36,14 @@ public class NoteController {
     private final NoteService noteService;
     private final SemanticSearchService semanticSearchService;
     private final NoteEnrichService enrichService;
+    private final NoteIngestService ingestService;
 
-    public NoteController(NoteService noteService, SemanticSearchService semanticSearchService, NoteEnrichService enrichService) {
+    public NoteController(NoteService noteService, SemanticSearchService semanticSearchService,
+                          NoteEnrichService enrichService, NoteIngestService ingestService) {
         this.noteService = noteService;
         this.semanticSearchService = semanticSearchService;
         this.enrichService = enrichService;
+        this.ingestService = ingestService;
     }
 
     @PostMapping
@@ -66,6 +73,19 @@ public class NoteController {
     public List<RelatedNote> related(@PathVariable String id) {
         Note note = noteService.get(id);
         return semanticSearchService.relatedNotes(note.getId(), note.getTitle(), note.getContent(), 5);
+    }
+
+    /** 分块布局（读时计算，不落库）：RAG 来源点击后前端据 chunk_index + 原文区间定位段落。 */
+    @GetMapping("/{id}/chunks")
+    public List<ChunkLayout> chunks(@PathVariable String id) {
+        Note note = noteService.get(id);
+        List<NoteChunker.Chunk> chunks = ingestService.layout(note);
+        List<ChunkLayout> result = new ArrayList<>(chunks.size());
+        for (int i = 0; i < chunks.size(); i++) {
+            NoteChunker.Chunk c = chunks.get(i);
+            result.add(new ChunkLayout(i, c.charStart(), c.charEnd(), c.headingPath()));
+        }
+        return result;
     }
 
     /** 显式 AI 富化（标签建议+摘要）：同步调用 LLM 并返回更新后的笔记；保存不再自动触发。 */

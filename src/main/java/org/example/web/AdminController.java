@@ -6,6 +6,7 @@ import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
+import org.example.config.AiModelConfig;
 import org.example.config.AiProperties;
 import org.example.config.RuntimeModelConfig;
 import org.example.config.SwappableModels;
@@ -132,46 +133,40 @@ public class AdminController {
         return reembedService.status();
     }
 
-    /** 按 effective provider 重建 chat 与流式模型并热替换（进行中的请求继续用旧模型）。 */
+    /** 按 effective provider 重建 chat 与流式模型并热替换（进行中的请求继续用旧模型）。
+     *  生效值解析必须走 AiModelConfig.resolveChat——与启动装配同一实现，禁止在此重抄一份（/v1 串扰教训）。 */
     private void rebuildChat(String provider) {
-        AiProperties.OpenAiCompatible oc = props.chat().openaiCompatible();
-        AiProperties.Ollama ol = props.chat().ollama();
-        boolean ollama = "ollama".equals(provider);
-        String baseUrl = firstNonBlank(runtime.chatBaseUrl(), ollama ? ol.baseUrl() : oc.baseUrl());
-        String apiKey = firstNonBlank(runtime.chatApiKey(), ollama ? null : oc.apiKey());
-        String model = firstNonBlank(runtime.chatModel(), ollama ? ol.chatModel() : oc.chatModel());
+        AiModelConfig.EffectiveChat c = AiModelConfig.resolveChat(props, runtime);
         List<ChatModelListener> listeners = List.of(listener);
-        if (ollama) {
+        if ("ollama".equals(provider)) {
             chatModel.swap(OllamaChatModel.builder()
-                    .baseUrl(baseUrl).modelName(model)
-                    .temperature(ol.temperature()).timeout(ol.timeout())
+                    .baseUrl(c.baseUrl()).modelName(c.model())
+                    .temperature(c.temperature()).timeout(c.timeout())
+                    .returnThinking(true)
                     .listeners(listeners).build());
             streamingChatModel.swap(OllamaStreamingChatModel.builder()
-                    .baseUrl(baseUrl).modelName(model)
-                    .temperature(ol.temperature()).timeout(ol.timeout())
+                    .baseUrl(c.baseUrl()).modelName(c.model())
+                    .temperature(c.temperature()).timeout(c.timeout())
+                    .returnThinking(true)
                     .listeners(listeners).build());
         } else {
             chatModel.swap(OpenAiChatModel.builder()
-                    .baseUrl(baseUrl).apiKey(apiKey).modelName(model)
-                    .temperature(oc.temperature()).timeout(oc.timeout())
+                    .baseUrl(c.baseUrl()).apiKey(c.apiKey()).modelName(c.model())
+                    .temperature(c.temperature()).timeout(c.timeout())
                     .listeners(listeners).build());
             streamingChatModel.swap(OpenAiStreamingChatModel.builder()
-                    .baseUrl(baseUrl).apiKey(apiKey).modelName(model)
-                    .temperature(oc.temperature()).timeout(oc.timeout())
+                    .baseUrl(c.baseUrl()).apiKey(c.apiKey()).modelName(c.model())
+                    .temperature(c.temperature()).timeout(c.timeout())
                     .listeners(listeners).build());
         }
     }
 
     private void rebuildVision() {
-        AiProperties.Vision v = props.vision();
-        AiProperties.OpenAiCompatible oc = props.chat().openaiCompatible();
-        String visionName = firstNonBlank(runtime.visionModel(), v.model());
-        String visionBase = firstNonBlank(runtime.chatBaseUrl(), v.baseUrl(), oc.baseUrl());
-        String visionKey = firstNonBlank(runtime.chatApiKey(), v.apiKey(), oc.apiKey());
+        AiModelConfig.EffectiveVision v = AiModelConfig.resolveVision(props, runtime);
         visionChatModel.swap(OpenAiChatModel.builder()
-                .baseUrl(visionBase).apiKey(visionKey).modelName(visionName)
+                .baseUrl(v.baseUrl()).apiKey(v.apiKey()).modelName(v.model())
                 .listeners(List.of(listener))
-                .timeout(v.timeout()).build());
+                .timeout(props.vision().timeout()).build());
     }
 
     /* ---- 脱敏展示 ---- */
@@ -179,18 +174,16 @@ public class AdminController {
     private Map<String, Object> chatConfig() {
         AiProperties.Chat cfg = props.chat();
         String provider = runtime.effectiveChatProvider(cfg.provider());
+        // 展示值与实际生效值同源：resolveChat 里含 ollama 的 /v1 串扰守卫，避免"显示的地址模型根本没用"
+        AiModelConfig.EffectiveChat c = AiModelConfig.resolveChat(props, runtime);
         Map<String, Object> chat = new LinkedHashMap<>();
         chat.put("provider", provider);
         chat.put("ymlProvider", cfg.provider());
         chat.put("providers", List.of("openai-compatible", "ollama"));
-        if ("ollama".equals(provider)) {
-            chat.put("baseUrl", effective(cfg.ollama().baseUrl(), runtime.chatBaseUrl()));
-            chat.put("model", effective(cfg.ollama().chatModel(), runtime.chatModel()));
-        } else {
-            AiProperties.OpenAiCompatible oc = cfg.openaiCompatible();
-            chat.put("baseUrl", effective(oc.baseUrl(), runtime.chatBaseUrl()));
-            chat.put("model", effective(oc.chatModel(), runtime.chatModel()));
-            chat.put("apiKey", mask(effective(oc.apiKey(), runtime.chatApiKey())));
+        chat.put("baseUrl", c.baseUrl());
+        chat.put("model", c.model());
+        if (!"ollama".equals(provider)) {
+            chat.put("apiKey", mask(c.apiKey()));
         }
         chat.put("overridden", runtime.chatProvider() != null || runtime.chatModel() != null
                 || runtime.chatBaseUrl() != null || runtime.chatApiKey() != null);
@@ -222,10 +215,6 @@ public class AdminController {
         }
         embedding.put("note", "嵌入模型不支持热切换（更换需全量重嵌入，见文档 R1）");
         return embedding;
-    }
-
-    private static String effective(String ymlValue, String override) {
-        return override != null ? override : ymlValue;
     }
 
     private static String firstNonBlank(String... candidates) {

@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -78,8 +79,29 @@ public class ChatController {
         historyService.saveUserMessage(sessionId, request.question());
 
         TokenStream stream = noteAssistant.chat(sessionId, prompt);
+        // 思考增量（ollama thinking / deepseek reasoning）：langchain4j 1.22 单独回调、默认无人订阅即丢失。
+        // 用 <think> 围栏包进 message 流——前端按折叠框解析，持久化形态与内联思考的模型（deepseek-r1）一致；
+        // AiMessage.thinking 独立于 content，多轮记忆不会把思考带进后续提问。
+        // 围栏开关用原子布尔：thinking 与 content 回调可能来自不同线程，普通数组元素无跨线程可见性保证。
+        AtomicBoolean thinkFenceOpen = new AtomicBoolean(false);
         stream
+                .onPartialThinking(thinking -> {
+                    String t = thinking.text();
+                    if (t == null || t.isEmpty()) {
+                        return;
+                    }
+                    if (thinkFenceOpen.compareAndSet(false, true)) {
+                        answer.append("<think>\n");
+                        send(emitter, "message", "<think>\n");
+                    }
+                    answer.append(t);
+                    send(emitter, "message", t);
+                })
                 .onPartialResponse(token -> {
+                    if (thinkFenceOpen.compareAndSet(true, false)) {
+                        answer.append("\n</think>\n\n");
+                        send(emitter, "message", "\n</think>\n\n");
+                    }
                     answer.append(token);
                     send(emitter, "message", token);
                 })

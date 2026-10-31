@@ -34,8 +34,8 @@ public class AiModelConfig {
         List<ChatModelListener> listeners = List.of(listener);
         String provider = runtime.effectiveChatProvider(props.chat().provider());
         ChatModel concrete = switch (provider) {
-            case "openai-compatible" -> openAiChat(effectiveChat(props, runtime), listeners);
-            case "ollama" -> ollamaChat(effectiveChat(props, runtime), listeners);
+            case "openai-compatible" -> openAiChat(resolveChat(props, runtime), listeners);
+            case "ollama" -> ollamaChat(resolveChat(props, runtime), listeners);
             default -> throw new IllegalStateException(
                     "未知的 app.ai.chat.provider: " + provider + "，支持 openai-compatible / ollama");
         };
@@ -49,8 +49,8 @@ public class AiModelConfig {
         List<ChatModelListener> listeners = List.of(listener);
         String provider = runtime.effectiveChatProvider(props.chat().provider());
         StreamingChatModel concrete = switch (provider) {
-            case "openai-compatible" -> openAiStreaming(effectiveChat(props, runtime), listeners);
-            case "ollama" -> ollamaStreaming(effectiveChat(props, runtime), listeners);
+            case "openai-compatible" -> openAiStreaming(resolveChat(props, runtime), listeners);
+            case "ollama" -> ollamaStreaming(resolveChat(props, runtime), listeners);
             default -> throw new IllegalStateException(
                     "未知的 app.ai.chat.provider: " + provider + "，支持 openai-compatible / ollama");
         };
@@ -61,18 +61,13 @@ public class AiModelConfig {
     public SwappableModels.Chat visionChatModel(AiProperties props,
                                                 RuntimeModelConfig runtime,
                                                 TokenUsageLoggingListener listener) {
-        AiProperties.Vision v = props.vision();
-        AiProperties.OpenAiCompatible chat = props.chat().openaiCompatible();
-        // 生效值：运行时覆盖 > vision 配置 > chat 配置
-        String baseUrl = firstNonBlank(runtime.chatBaseUrl(), v.baseUrl(), chat.baseUrl());
-        String apiKey = firstNonBlank(runtime.chatApiKey(), v.apiKey(), chat.apiKey());
-        String model = firstNonBlank(runtime.visionModel(), v.model());
+        AiModelConfig.EffectiveVision v = resolveVision(props, runtime);
         List<ChatModelListener> listeners = List.of(listener);
         ChatModel concrete = OpenAiChatModel.builder()
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .modelName(model)
-                .timeout(v.timeout())
+                .baseUrl(v.baseUrl())
+                .apiKey(v.apiKey())
+                .modelName(v.model())
+                .timeout(props.vision().timeout())
                 .listeners(listeners)
                 .build();
         return new SwappableModels.Chat(concrete);
@@ -102,22 +97,45 @@ public class AiModelConfig {
         };
     }
 
-    /* ---- 生效配置计算：运行时覆盖 > yml ---- */
+    /* ---- 生效配置计算：运行时覆盖 > yml（单一真相源：启动装配、热切换重建、配置展示都必须走这里）---- */
 
-    record EffectiveChat(String baseUrl, String apiKey, String model, Double temperature, Duration timeout) {}
+    public record EffectiveChat(String baseUrl, String apiKey, String model, Double temperature, Duration timeout) {}
 
-    private EffectiveChat effectiveChat(AiProperties props, RuntimeModelConfig runtime) {
+    /** 视觉模型恒走 OpenAI 兼容端点：baseUrl/apiKey/model 三元组。 */
+    public record EffectiveVision(String baseUrl, String apiKey, String model) {}
+
+    public static EffectiveChat resolveChat(AiProperties props, RuntimeModelConfig runtime) {
         AiProperties.Chat cfg = props.chat();
         AiProperties.OpenAiCompatible oc = cfg.openaiCompatible();
         AiProperties.Ollama ol = cfg.ollama();
         boolean ollama = "ollama".equals(runtime.effectiveChatProvider(cfg.provider()));
+        // ollama 原生端点挂在根路径（/api/chat）；历史遗留的 openai 风格运行时覆盖（以 /v1 结尾）
+        // 会把请求打到 /v1/api/chat 直接 404——视作跨 provider 串扰丢弃，退回 yml 的 ollama 地址
+        String runtimeBaseUrl = runtime.chatBaseUrl();
+        if (ollama && runtimeBaseUrl != null && runtimeBaseUrl.endsWith("/v1")) {
+            runtimeBaseUrl = null;
+        }
         return new EffectiveChat(
-                firstNonBlank(runtime.chatBaseUrl(), ollama ? ol.baseUrl() : oc.baseUrl()),
+                firstNonBlank(runtimeBaseUrl, ollama ? ol.baseUrl() : oc.baseUrl()),
                 // ollama 无密钥概念：显式置 null（不能走 firstNonBlank——候选全空会抛"模型配置缺失"，曾致 runtime provider=ollama 时启动失败）
                 ollama ? null : firstNonBlank(runtime.chatApiKey(), oc.apiKey()),
                 firstNonBlank(runtime.chatModel(), ollama ? ol.chatModel() : oc.chatModel()),
                 ollama ? ol.temperature() : oc.temperature(),
                 ollama ? ol.timeout() : oc.timeout());
+    }
+
+    public static EffectiveVision resolveVision(AiProperties props, RuntimeModelConfig runtime) {
+        AiProperties.Vision v = props.vision();
+        AiProperties.OpenAiCompatible oc = props.chat().openaiCompatible();
+        // chat 的运行时地址/密钥是 provider 专属的：chat 在 ollama 时它们指向本地原生端点，
+        // 带给 vision（OpenAI 客户端）会打到 ollama 上（模型不存在/路径不对）——与 resolveChat 的守卫同族
+        boolean ollama = "ollama".equals(runtime.effectiveChatProvider(props.chat().provider()));
+        String runtimeBaseUrl = ollama ? null : runtime.chatBaseUrl();
+        String runtimeApiKey = ollama ? null : runtime.chatApiKey();
+        String baseUrl = firstNonBlank(runtimeBaseUrl, v.baseUrl(), oc.baseUrl());
+        String apiKey = firstNonBlank(runtimeApiKey, v.apiKey(), oc.apiKey());
+        String model = firstNonBlank(runtime.visionModel(), v.model());
+        return new EffectiveVision(baseUrl, apiKey, model);
     }
 
     private ChatModel openAiChat(EffectiveChat c, List<ChatModelListener> listeners) {
@@ -148,6 +166,9 @@ public class AiModelConfig {
                 .modelName(c.model())
                 .temperature(c.temperature())
                 .timeout(c.timeout())
+                // 思考模型（qwen3.5 等）默认就会思考：不开 returnThinking，思考增量被 langchain4j 丢弃；
+                // 只影响响应解析、不往请求塞 think 参数，非思考模型不受影响
+                .returnThinking(true)
                 .listeners(listeners)
                 .build();
     }
@@ -158,6 +179,7 @@ public class AiModelConfig {
                 .modelName(c.model())
                 .temperature(c.temperature())
                 .timeout(c.timeout())
+                .returnThinking(true)
                 .listeners(listeners)
                 .build();
     }

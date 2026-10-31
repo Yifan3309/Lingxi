@@ -52,11 +52,7 @@ public class RuntimeModelConfig {
     }
 
     public synchronized void save(String chatProvider, String chatModel, String chatBaseUrl, String chatApiKey, String visionModel) {
-        this.chatProvider = blankToNull(chatProvider);
-        this.chatModel = blankToNull(chatModel);
-        this.chatBaseUrl = blankToNull(chatBaseUrl);
-        this.chatApiKey = blankToNull(chatApiKey);
-        this.visionModel = blankToNull(visionModel);
+        apply(chatProvider, chatModel, chatBaseUrl, chatApiKey, visionModel);
         try {
             Files.createDirectories(FILE.getParent());
             Map<String, Object> json = new java.util.LinkedHashMap<>();
@@ -65,10 +61,27 @@ public class RuntimeModelConfig {
             json.put("chatBaseUrl", this.chatBaseUrl);
             json.put("chatApiKey", this.chatApiKey);
             json.put("visionModel", this.visionModel);
-            mapper.writerWithDefaultPrettyPrinter().writeValue(FILE.toFile(), json);
+            // 原子落盘（与 EmbeddingStoreService 同约定）：序列化中途崩溃不留半截 JSON
+            Path tmp = FILE.resolveSibling(FILE.getFileName() + ".tmp");
+            mapper.writerWithDefaultPrettyPrinter().writeValue(tmp.toFile(), json);
+            try {
+                Files.move(tmp, FILE, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(tmp, FILE, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
             log.warn("运行时模型覆盖写入失败（内存中仍生效）：{}", String.valueOf(e.getMessage()));
         }
+    }
+
+    /** 只改内存生效值（不落盘）：包内可见，供单测构造覆盖状态。 */
+    synchronized void apply(String chatProvider, String chatModel, String chatBaseUrl, String chatApiKey, String visionModel) {
+        this.chatProvider = blankToNull(chatProvider);
+        this.chatModel = blankToNull(chatModel);
+        this.chatBaseUrl = blankToNull(chatBaseUrl);
+        this.chatApiKey = blankToNull(chatApiKey);
+        this.visionModel = blankToNull(visionModel);
     }
 
     public String chatProvider() { return chatProvider; }

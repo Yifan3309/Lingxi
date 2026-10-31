@@ -6,21 +6,18 @@ import LingXiMark from './components/LingXiMark.vue'
 import ModelConfigDialog from './components/ModelConfigDialog.vue'
 import { useChat } from './composables/useChat'
 import { useNotes } from './composables/useNotes'
+import { useTheme } from './composables/useTheme'
+import { useUi } from './composables/useUi'
 import { api } from './api'
 
 const { refresh } = useNotes()
 const chat = useChat()
 const config = ref(null)
-const configOpen = ref(false)
+/* 模型设置对话框对命令开放（/model）：开关状态收进 useUi 单例 */
+const { modelConfigOpen: configOpen } = useUi()
 
-/* 主题切换：偏好存 localStorage，index.html 内联脚本已做渲染前防闪 */
-const theme = ref(localStorage.getItem('lx_theme') || 'light')
-
-function toggleTheme() {
-  theme.value = theme.value === 'light' ? 'dark' : 'light'
-  document.documentElement.classList.toggle('dark', theme.value === 'dark')
-  localStorage.setItem('lx_theme', theme.value)
-}
+/* 主题切换：偏好存 localStorage，index.html 内联脚本已做渲染前防闪；/theme 命令共用同一逻辑 */
+const { theme, toggle: toggleTheme } = useTheme()
 
 /*
  * 页面导航：页内不再放标题，改用一枚在按钮之间滑动的胶囊指示当前页。

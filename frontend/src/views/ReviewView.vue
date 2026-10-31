@@ -82,17 +82,28 @@ const cache = reactive({})
 </script>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { parseTags, relTime, useNotes } from '../composables/useNotes'
 
 const router = useRouter()
+const route = useRoute()
 const { select } = useNotes()
 
 const range = ref('daily')
 const loading = ref(false)
 const loadedAt = ref('')
+
+/* /review 命令带范围落地：?range=daily|weekly，非法值忽略走默认 */
+const RANGES = ['daily', 'weekly']
+function applyQueryRange() {
+  const q = route.query.range
+  if (RANGES.includes(q)) {
+    range.value = q
+  }
+}
+watch(() => route.query.range, applyQueryRange)
 
 /* 每个范围一天只自动加载一次，之后进出页面/切换范围用缓存，
    想更新点「刷新」（LLM 叙述有成本，由用户决定何时花）。 */
@@ -107,7 +118,10 @@ const topTag = computed(() => {
   return entries.length ? entries[0][0] : ''
 })
 
-onMounted(() => load(false))
+onMounted(() => {
+  applyQueryRange()
+  load(false)
+})
 
 /** force=false：今天已自动加载过则直接用缓存；force=true：用户手动刷新。 */
 async function load(force) {
