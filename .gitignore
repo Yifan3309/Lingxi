@@ -42,7 +42,8 @@ build/
 doc/
 
 ### Local data (H2 database + embedding store) ###
-data/
+# 锚定到根目录：frontend/src/data/ 是要进库的前端 seed 数据，不能被吞
+/data/
 
 ### Local model binaries (ONNX) ###
 models/embedding/
@@ -51,6 +52,8 @@ models/reranker/
 ### Frontend ###
 frontend/node_modules/
 src/main/resources/static/
+# 概念层 seed 原型数据：tools/export_concepts.py 从本地笔记导出，含真实笔记内容，不进版本库
+frontend/src/data/
 
 ### Reranker sidecar ###
 reranker-service/venv/

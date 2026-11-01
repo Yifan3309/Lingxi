@@ -27,6 +27,7 @@ const route = useRoute()
 const navItems = [
   { to: '/notes', label: '笔记' },
   { to: '/graph', label: '图谱' },
+  { to: '/concepts', label: '概念' },
   { to: '/review', label: '回顾' }
 ]
 const navRef = ref(null)

@@ -17,6 +17,9 @@
       >
         显示单例标签<template v-if="view.hiddenTags">（{{ view.hiddenTags }}）</template>
       </el-checkbox>
+      <el-button size="small" round :disabled="loading" @click="setMinScore">
+        关联度 {{ minScore != null ? minScore : '默认' }}
+      </el-button>
       <el-button size="small" round :disabled="empty || !lastData" @click="resetView">重置视图</el-button>
       <el-button size="small" round :loading="loading" @click="load">刷新</el-button>
     </div>
@@ -54,11 +57,47 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import { useNotes } from '../composables/useNotes'
 
 const router = useRouter()
 const { select } = useNotes()
+
+/* 语义边阈值（关联度）：0.85~0.99，localStorage 记住偏好；null = 用后端默认 */
+const MIN_SCORE_FLOOR = 0.85
+const MIN_SCORE_CEIL = 0.99
+const MIN_SCORE_KEY = 'lx_graph_min_score'
+
+function loadMinScore() {
+  const v = parseFloat(localStorage.getItem(MIN_SCORE_KEY))
+  return Number.isFinite(v) ? Math.min(MIN_SCORE_CEIL, Math.max(MIN_SCORE_FLOOR, v)) : null
+}
+
+const minScore = ref(loadMinScore())
+
+function setMinScore() {
+  ElMessageBox.prompt(`语义边阈值（${MIN_SCORE_FLOOR} ~ ${MIN_SCORE_CEIL}）：越高连线越少越强，越低越密越弱`, '设定关联度', {
+    inputValue: minScore.value != null ? String(minScore.value) : '',
+    confirmButtonText: '应用',
+    cancelButtonText: '取消',
+    inputPattern: /^\s*(\d+(\.\d+)?)?\s*$/,
+    inputErrorMessage: '请输入数字'
+  })
+    .then(({ value }) => {
+      let v = value == null || value.trim() === '' ? null : parseFloat(value)
+      if (v != null) {
+        v = Math.min(MIN_SCORE_CEIL, Math.max(MIN_SCORE_FLOOR, v))
+        if (v !== parseFloat(value)) {
+          ElMessage.info(`已按范围调整：${v}`)
+        }
+      }
+      minScore.value = v
+      localStorage.setItem(MIN_SCORE_KEY, v == null ? '' : String(v))
+      load()
+    })
+    .catch(() => {})
+}
 
 const chartEl = ref(null)
 const loading = ref(true)
@@ -121,7 +160,7 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    const data = await api.graph()
+    const data = await api.graph(minScore.value != null ? { minScore: minScore.value } : undefined)
     lastData.value = data
     empty.value = !data.nodes?.some((n) => n.type === 'note')
     if (!empty.value) {

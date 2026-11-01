@@ -24,9 +24,11 @@ public class ReviewController {
         this.reviewService = reviewService;
     }
 
+    /** 知识图谱。minScore 可选：语义边阈值覆盖（钳位 0.85~0.99），缺省用 yml 配置值。 */
     @GetMapping("/graph")
-    public GraphService.GraphResult graph() {
-        return graphService.graph();
+    public GraphService.GraphResult graph(
+            @RequestParam(name = "minScore", required = false) Double minScore) {
+        return graphService.graph(minScore);
     }
 
     /** range=daily（今天，默认）/ weekly（最近 7 天） */

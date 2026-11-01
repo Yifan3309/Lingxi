@@ -32,7 +32,7 @@ class GraphServiceTest {
                 TestFixtures.note("n1", "笔记一", "AI,笔记", "工作", "内容"),
                 TestFixtures.note("n2", "笔记二", "AI", null, "内容"));
 
-        GraphService.GraphResult result = service(new GraphProperties(0.9, 2)).graph();
+        GraphService.GraphResult result = service(new GraphProperties(0.9, 2)).graph(null);
 
         assertThat(result.nodes()).filteredOn(n -> "tag".equals(n.type()))
                 .extracting(GraphService.GraphNode::id)
@@ -105,7 +105,7 @@ class GraphServiceTest {
     void labelsEmptyTitleAsUnnamed() {
         givenNotes(TestFixtures.note("n1", null, null, null, "内容"));
 
-        GraphService.GraphResult result = service(new GraphProperties(0.9, 2)).graph();
+        GraphService.GraphResult result = service(new GraphProperties(0.9, 2)).graph(null);
 
         assertThat(result.nodes()).singleElement()
                 .satisfies(n -> assertThat(n.label()).isEqualTo("未命名"));
@@ -124,8 +124,38 @@ class GraphServiceTest {
     }
 
     private List<GraphService.GraphEdge> semanticEdges(GraphProperties props) {
-        return service(props).graph().edges().stream()
+        return semanticEdges(props, null);
+    }
+
+    private List<GraphService.GraphEdge> semanticEdges(GraphProperties props, Double minScore) {
+        return service(props).graph(minScore).edges().stream()
                 .filter(e -> "semantic".equals(e.type()))
                 .toList();
+    }
+
+    @Test
+    @DisplayName("语义边阈值参数覆盖 yml：0.85 时连上 0.85~0.90 之间的对")
+    void minScoreParamOverridesYml() {
+        givenNotes(
+                TestFixtures.note("n1", "笔记一", null, null, "内容"),
+                TestFixtures.note("n2", "笔记二", null, null, "内容"));
+        // 两篇质心余弦 = 0.87：低于 yml 的 0.9，但落在参数钳位下限 0.85 之上
+        givenCentroids(Map.of("n1", new float[]{1, 0}, "n2", new float[]{0.87f, 0.4930525f}));
+
+        assertThat(semanticEdges(new GraphProperties(0.9, 2), 0.85)).hasSize(1);
+        assertThat(semanticEdges(new GraphProperties(0.9, 2), null)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("参数钳位到 0.85~0.99：过低按 0.85、过高按 0.99 处理")
+    void minScoreParamIsClamped() {
+        givenNotes(
+                TestFixtures.note("n1", "笔记一", null, null, "内容"),
+                TestFixtures.note("n2", "笔记二", null, null, "内容"));
+        givenCentroids(Map.of("n1", new float[]{1, 0}, "n2", new float[]{0.8f, 0.6f}));
+
+        // 余弦 0.8：钳到 0.85 后连不上；钳到 0.99 更连不上
+        assertThat(semanticEdges(new GraphProperties(0.9, 2), 0.5)).isEmpty();
+        assertThat(semanticEdges(new GraphProperties(0.9, 2), 1.2)).isEmpty();
     }
 }

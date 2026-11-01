@@ -34,13 +34,15 @@ class NoteServiceTest {
 
     private NoteRepository noteRepo;
     private NoteIngestService ingestService;
+    private ConceptQueue conceptQueue;
     private NoteService service;
 
     @BeforeEach
     void setUp() {
         noteRepo = mock(NoteRepository.class);
         ingestService = mock(NoteIngestService.class);
-        service = new NoteService(noteRepo, ingestService);
+        conceptQueue = mock(ConceptQueue.class);
+        service = new NoteService(noteRepo, ingestService, conceptQueue);
         when(noteRepo.save(any(Note.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
