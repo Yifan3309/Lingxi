@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useChat } from '../composables/useChat'
 import { useNotes } from '../composables/useNotes'
+import { renderMarkdown } from '../markdown'
 import { api, fmtScore } from '../api'
 import LingXiMark from './LingXiMark.vue'
 import TokenPalette from './TokenPalette.vue'
@@ -709,8 +710,9 @@ watch(
               </div>
               <div
                 v-else-if="seg.text"
-                class="max-w-[92%] text-sm leading-relaxed whitespace-pre-wrap break-words text-tx1"
-              >{{ seg.text }}</div>
+                class="md-chat prose prose-sm max-w-[92%] text-sm leading-relaxed break-words text-tx1"
+                v-html="renderMarkdown(seg.text)"
+              ></div>
             </template>
           </template>
 
