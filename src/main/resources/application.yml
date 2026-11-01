@@ -48,6 +48,14 @@ app:
     enabled: true                    # 总开关；false 时显式端点也返回 400
     max-content-chars: 3000
 
+  concept:                          # 概念层抽取：保存后异步排队，失败不影响保存
+    enabled: true                    # 总开关；false 时不再有新抽取，已有数据照常可读
+    extract-on-save: true            # 关掉后保存不再触发，只能走 /api/admin/concepts/backfill
+    max-content-chars: 12000
+    theme-mode: llm                    # llm = 模型按语义分组｜folder = 用文件夹做结构证据
+    theme-batch-size: 20               # 每批送给模型多少个概念
+    theme-max-members: 10              # 单个主题最多几个概念（与提示词里的上限一致）
+
   vision:                           # 多模态导入：图片/扫描 PDF 文字提取（视觉模型）；留空继承 chat 配置
     model: glm-4v-flash
 
@@ -83,7 +91,7 @@ app:
     max-image-bytes: 10485760       # 单张图片上限 10MB（与 /api/assets 一致）
     exclude-dirs: [".trash", "node_modules", "__pycache__", ".stfolder"]  # 隐藏目录一律排除，这里补充非隐藏目录
   graph:                            # 知识图谱（M3）语义边参数
-    semantic-min-score: 0.90        # E5 中文短文本余弦基线偏高（不相关对 ~0.85），0.90 才切得干净；同域密集笔记可调低
+    semantic-min-score: 0.95        # E5 中文短文本余弦基线偏高（不相关对 ~0.85），0.90 才切得干净；同域密集笔记可调低
     semantic-top-k: 2               # 每笔记最多保留的语义边数（防毛线球）
   ai:
     chat:

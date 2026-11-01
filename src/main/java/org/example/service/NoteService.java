@@ -26,10 +26,13 @@ public class NoteService {
 
     private final NoteRepository noteRepo;
     private final NoteIngestService ingestService;
+    private final ConceptQueue conceptQueue;
 
-    public NoteService(NoteRepository noteRepo, NoteIngestService ingestService) {
+    public NoteService(NoteRepository noteRepo, NoteIngestService ingestService,
+                       ConceptQueue conceptQueue) {
         this.noteRepo = noteRepo;
         this.ingestService = ingestService;
+        this.conceptQueue = conceptQueue;
     }
 
     public Note create(NoteRequest request) {
@@ -46,6 +49,7 @@ public class NoteService {
         note.setSource(source);
         note = noteRepo.save(note);
         ingestQuietly(note);
+        conceptQueue.submitOnSave(note.getId());
         return note;
     }
 
@@ -65,6 +69,7 @@ public class NoteService {
         }
         note = noteRepo.save(note);
         ingestQuietly(note);
+        conceptQueue.submitOnSave(note.getId());
         return note;
     }
 
@@ -133,6 +138,11 @@ public class NoteService {
         return path.toString();
     }
 
+    /**
+     * 概念抽取排在保存之后，走异步队列：保存是用户明确的动作，能不能存下来
+     * 和能不能抽出概念是两件事，模型挂了不该让"保存失败"弹出来。
+     * 是否真的抽由内容的 SHA-256 决定（见 ConceptService#extract），重复保存不会重复调用。
+     */
     private void ingestQuietly(Note note) {
         try {
             ingestService.ingest(note);

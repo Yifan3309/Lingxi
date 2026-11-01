@@ -38,7 +38,15 @@ public class GraphService {
 
     public record GraphResult(List<GraphNode> nodes, List<GraphEdge> edges) {}
 
-    public GraphResult graph() {
+    /** 语义边阈值允许的调节区间（图谱页「关联度」按钮的可调范围） */
+    public static final double MIN_SCORE_FLOOR = 0.85;
+    public static final double MIN_SCORE_CEIL = 0.99;
+
+    /**
+     * @param minScore 语义边阈值覆盖；null = 用 yml 配置值。无论来源都钳位在 [0.85, 0.99]。
+     */
+    public GraphResult graph(Double minScore) {
+        double threshold = clampThreshold(minScore != null ? minScore : props.semanticMinScore());
         List<Note> notes = noteRepo.findAll();
         List<GraphNode> nodes = new ArrayList<>();
         List<GraphEdge> edges = new ArrayList<>();
@@ -57,13 +65,13 @@ public class GraphService {
             nodes.add(new GraphNode("tag:" + e.getKey(), e.getKey(), "tag", "", 6 + e.getValue() * 2));
         }
 
-        addSemanticEdges(notes, edges);
+        addSemanticEdges(notes, edges, threshold);
         log.info("图谱生成：{} 节点 / {} 边", nodes.size(), edges.size());
         return new GraphResult(nodes, edges);
     }
 
     /** 质心两两余弦，每笔记只留最高的 top-K 条（无质心的笔记跳过）。 */
-    private void addSemanticEdges(List<Note> notes, List<GraphEdge> edges) {
+    private void addSemanticEdges(List<Note> notes, List<GraphEdge> edges, double threshold) {
         Map<String, float[]> centroids = storeService.noteCentroids();
         record Candidate(String a, String b, double score) {}
         Map<String, List<Candidate>> perNote = new HashMap<>();
@@ -78,7 +86,7 @@ public class GraphService {
                     continue;
                 }
                 double score = cosine(a, b);
-                if (score >= props.semanticMinScore()) {
+                if (score >= threshold) {
                     perNote.computeIfAbsent(notes.get(i).getId(), k -> new ArrayList<>())
                             .add(new Candidate(notes.get(i).getId(), notes.get(j).getId(), score));
                     perNote.computeIfAbsent(notes.get(j).getId(), k -> new ArrayList<>())
@@ -97,6 +105,10 @@ public class GraphService {
                 }
             }
         }
+    }
+
+    private static double clampThreshold(double v) {
+        return Math.max(MIN_SCORE_FLOOR, Math.min(MIN_SCORE_CEIL, v));
     }
 
     private static double cosine(float[] a, float[] b) {

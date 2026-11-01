@@ -3,6 +3,7 @@ package org.example.config;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.listener.ChatModelListener;
+import dev.langchain4j.model.chat.request.ResponseFormat;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.OnnxEmbeddingModel;
 import dev.langchain4j.model.embedding.onnx.PoolingMode;
@@ -27,6 +28,14 @@ import java.util.Map;
  */
 @Configuration
 public class AiModelConfig {
+
+    /** 概念抽取的输出上限：只返回名字数组，512 足够，无上限等于允许无限生成 */
+    private static final int CONCEPT_NUM_PREDICT = 512;
+    /**
+     * 概念抽取超时。取 60s 而不是对话那档 120s：抽取正常 1 秒，
+     * 到这个量级基本是模型在异常生成，宁可失败留空也不要占住单线程队列。
+     */
+    private static final Duration CONCEPT_TIMEOUT = Duration.ofSeconds(60);
 
     @Bean
     public SwappableModels.Chat chatModel(AiProperties props,
@@ -72,6 +81,92 @@ public class AiModelConfig {
                 .listeners(listeners)
                 .build();
         return new SwappableModels.Chat(concrete);
+    }
+
+    /**
+     * 概念抽取专用模型：<b>不能复用对话模型</b>，三处参数不收紧直接导致抽取挂死。
+     *
+     * <p>实测（qwen_3.5_2BQ4）：对话模型是思考模型、没设输出上限、上下文用模型默认的 262k。
+     * 拿它做抽取时思考会一直生成、content 为空，单篇跑满 120s 超时后 langchain4j 还会自动重试，
+     * 单篇近 3 分钟才失败一次；线程栈停在 {@code OllamaChatModel.chat}，队列看起来完全卡死
+     * （只抽完 1 篇、积压 33 篇、概念数 0）。收紧后单篇约 1 秒。
+     *
+     * <ul>
+     *   <li>{@code think(false)}：思考模型的推理对"抽名词"是纯开销，只会吃掉输出预算</li>
+     *   <li>{@code numPredict(512)}：输出只是一个名字数组；无上限等于允许无限生成</li>
+     * </ul>
+     *
+     * <p><b>刻意不设 numCtx。</b>抽取值 8192、对话用模型默认（这个模型是 262144），
+     * 两者交替运行时 Ollama 会为每一边重新加载模型——实测单次 70–100 s，
+     * 用户发一条消息就要等一分半。抽取不该改变已加载的上下文，让它跟对话共用同一个实例，
+     * 代价只是 KV cache 大一些，换来的是不会互相触发重载。
+     *
+     * 另外固定 temperature 0 并要 JSON 输出：抽取要的是可复现，不是多样。
+     */
+    @Bean("conceptChatModel")
+    public ChatModel conceptChatModel(AiProperties props,
+                                      RuntimeModelConfig runtime,
+                                      TokenUsageLoggingListener listener) {
+        EffectiveChat c = resolveChat(props, runtime);
+        List<ChatModelListener> listeners = List.of(listener);
+        if ("ollama".equals(runtime.effectiveChatProvider(props.chat().provider()))) {
+            return OllamaChatModel.builder()
+                    .baseUrl(c.baseUrl())
+                    .modelName(c.model())
+                    .temperature(0.0)
+                    .think(false)
+                    .numPredict(CONCEPT_NUM_PREDICT)
+                    .responseFormat(ResponseFormat.JSON)
+                    .timeout(CONCEPT_TIMEOUT)
+                    .listeners(listeners)
+                    .build();
+        }
+        return OpenAiChatModel.builder()
+                .baseUrl(c.baseUrl())
+                .apiKey(c.apiKey())
+                .modelName(c.model())
+                .temperature(0.0)
+                .maxTokens(CONCEPT_NUM_PREDICT)
+                .responseFormat(ResponseFormat.JSON)
+                .timeout(CONCEPT_TIMEOUT)
+                .listeners(listeners)
+                .build();
+    }
+
+    /**
+     * 主题分组专用模型：与抽取同一个坑（思考模型、无输出上限），但输出预算更大。
+     *
+     * <p>抽取只返回一个名字数组（几十个 token），主题分组要返回几十个成员名，
+     * 512 不够用，这里给 2048。
+     */
+    @Bean("themeChatModel")
+    public ChatModel themeChatModel(AiProperties props,
+                                    RuntimeModelConfig runtime,
+                                    TokenUsageLoggingListener listener) {
+        EffectiveChat c = resolveChat(props, runtime);
+        List<ChatModelListener> listeners = List.of(listener);
+        if ("ollama".equals(runtime.effectiveChatProvider(props.chat().provider()))) {
+            return OllamaChatModel.builder()
+                    .baseUrl(c.baseUrl())
+                    .modelName(c.model())
+                    .temperature(0.0)
+                    .think(false)
+                    .numPredict(2048)
+                    .responseFormat(ResponseFormat.JSON)
+                    .timeout(CONCEPT_TIMEOUT)
+                    .listeners(listeners)
+                    .build();
+        }
+        return OpenAiChatModel.builder()
+                .baseUrl(c.baseUrl())
+                .apiKey(c.apiKey())
+                .modelName(c.model())
+                .temperature(0.0)
+                .maxTokens(2048)
+                .responseFormat(ResponseFormat.JSON)
+                .timeout(CONCEPT_TIMEOUT)
+                .listeners(listeners)
+                .build();
     }
 
     @Bean

@@ -4,12 +4,23 @@ import org.example.domain.Note;
 import org.example.web.dto.NoteSummary;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
 
 public interface NoteRepository extends JpaRepository<Note, String> {
+
+    /**
+     * 概念抽取后只定向更新指纹列，不 save(note) 整实体：抽取事务从读笔记到写回之间
+     * 隔着一次模型调用（ConceptNoteRepository#deleteByNoteId 还会清空持久化上下文），
+     * merge 会把事务开头读到的旧内容整行写回，覆盖模型调用期间用户的再次保存。
+     */
+    @Modifying
+    @Query("update Note n set n.conceptHash = :hash where n.id = :id")
+    int updateConceptHash(@Param("id") String id, @Param("hash") String hash);
 
     /**
      * 列表投影：只取展示字段，不搬 content（65k 列）——原来列表直接把整个实体搬给前端，

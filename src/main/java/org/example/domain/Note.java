@@ -47,6 +47,15 @@ public class Note {
     @Column(length = 4096)
     private String summary;
 
+    /**
+     * 上次概念抽取时的内容指纹（标题+正文的 SHA-256）。
+     * 用指纹而不是"抽取时间"来判断新鲜度：时间戳说不清"内容有没有变"，
+     * 用户点两次保存但没改字，不该产生第二次模型调用。
+     * null = 从未抽取过。
+     */
+    @Column(name = "concept_hash", length = 64)
+    private String conceptHash;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -76,6 +85,8 @@ public class Note {
     public void setTags(String tags) { this.tags = tags; }
     public String getFolder() { return folder; }
     public void setFolder(String folder) { this.folder = folder; }
+    public String getConceptHash() { return conceptHash; }
+    public void setConceptHash(String conceptHash) { this.conceptHash = conceptHash; }
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
     public String getSuggestedTags() { return suggestedTags; }

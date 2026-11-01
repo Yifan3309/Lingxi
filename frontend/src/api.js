@@ -70,8 +70,16 @@ export const api = {
     request('/api/admin/config/test', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body), timeoutMs: 45000 }),
   history: (sessionId) => request(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`),
 
-  /** M3 知识图谱：节点（笔记+标签）与边（共标签/语义近邻）。 */
-  graph: () => request('/api/graph'),
+  /** M3 知识图谱：节点（笔记+标签）与边（共标签/语义近邻）。minScore 可选：语义边阈值覆盖。 */
+  graph: (params) => request('/api/graph' + toQuery(params)),
+
+  /** 概念层总览：主题 + 概念 + 未分类，一次取全 */
+  concepts: () => request('/api/concepts/overview'),
+  /** 概念层维护：把没抽过的笔记排进队列 / 重算主题 / 看进度 */
+  conceptBackfill: (all = false) =>
+    request('/api/admin/concepts/backfill' + toQuery({ all }), { method: 'POST' }),
+  conceptRebuildTopics: () => request('/api/admin/concepts/rebuild-topics', { method: 'POST' }),
+  conceptStatus: () => request('/api/admin/concepts/status'),
 
   /** M3 回顾：range=daily|weekly。summary 在模型不可用时为 null。 */
   review: (range) => request('/api/review' + toQuery({ range })),
