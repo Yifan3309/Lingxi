@@ -1,14 +1,24 @@
-import { marked } from 'marked'
-import markedKatex from 'marked-katex-extension'
+import MarkdownIt from 'markdown-it'
+import texmath from 'markdown-it-texmath'
+import taskLists from 'markdown-it-task-lists'
+import katex from 'katex'
 import DOMPurify from 'dompurify'
 import 'katex/dist/katex.min.css'
 
-// KaTeX 扩展：支持 $...$ 行内与 $$...$$ 块级公式（throwOnError=false 公式错误时显示原文不炸渲染）
-marked.use(markedKatex({ throwOnError: false }))
+// markdown-it（VSCode 同款解析器）：插件以 md.use() 组合，整套引擎的替换成本收敛在本文件。
+// html:true 沿用旧 marked 行为（允许内联 HTML），安全由 DOMPurify 统一消毒兜底；
+// linkify:true 对齐 marked 的 GFM 自动链接。
+const md = new MarkdownIt({ html: true, linkify: true })
+  // KaTeX：$...$ 行内与 $$...$$ 块级（throwOnError=false 公式错误时显示原文不炸渲染）。
+  // texmath 的行内规则不依赖空白边界，修复了 marked-katex-extension 的
+  // 「$ 紧贴汉字/全角标点时不渲染」缺陷（如 `和$\sigma$`）。
+  .use(texmath, { engine: katex, delimiters: 'dollars', katexOptions: { throwOnError: false } })
+  // GFM 任务列表（- [ ] / - [x]）：marked 默认支持而 markdown-it 需要插件
+  .use(taskLists)
 
-/** Markdown → 消毒后的 HTML（预览用）。 */
+/** Markdown → 消毒后的 HTML。笔记预览与聊天流共用；流式期间每个 chunk 重渲染累积全文（KB 级亚毫秒）。 */
 export function renderMarkdown(text) {
-  const html = marked.parse(text || '')
+  const html = md.render(text || '')
   return DOMPurify.sanitize(html)
 }
 
@@ -23,7 +33,7 @@ function slugify(text) {
 }
 
 /**
- * 预览容器增强（在 v-html 之后的真实 DOM 上做，避免和 marked 的 KaTeX 扩展抢渲染器）：
+ * 预览容器增强（在 v-html 之后的真实 DOM 上做，与具体 markdown 引擎解耦）：
  * ① 给 h1–h3 补稳定 id，并收集成目录条目；② 把每个 <pre> 包成带「语言条 + 复制按钮」的代码块。
  * 返回目录条目 [{ id, text, level }]，供右侧目录使用。
  */
