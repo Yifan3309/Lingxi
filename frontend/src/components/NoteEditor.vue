@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useNotes, useFolders, relTime } from '../composables/useNotes'
 import { useUi } from '../composables/useUi'
@@ -128,6 +128,34 @@ async function onPreviewClick(e) {
 function textareaEl() {
   return contentRef.value?.textarea || contentRef.value?.input || null
 }
+
+/* ---- 一键回到顶部：滚过阈值才浮现；编辑态滚的是 autosize textarea 内部，预览态滚的是
+       NotesView 的 el-main（长文两处都可能滚出去），一键把两者都送回顶部 ---- */
+const showTop = ref(false)
+const TOP_THRESHOLD = 300
+
+function mainScroller() {
+  const anchor = previewRef.value || textareaEl()
+  return anchor?.closest?.('.el-main') || null
+}
+
+/** scroll 事件不冒泡但会进入捕获阶段：在 document 上统一收 textarea 与 el-main 两个滚动源 */
+function onAnyScroll() {
+  const el = textareaEl()
+  const sc = mainScroller()
+  showTop.value = !!(el && el.scrollTop > TOP_THRESHOLD) || !!(sc && sc.scrollTop > TOP_THRESHOLD)
+}
+
+function backToTop() {
+  textareaEl()?.scrollTo({ top: 0, behavior: 'smooth' })
+  mainScroller()?.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+onMounted(() => document.addEventListener('scroll', onAnyScroll, { capture: true, passive: true }))
+onBeforeUnmount(() => document.removeEventListener('scroll', onAnyScroll, { capture: true }))
+
+// 切模式 / 换笔记后布局重排，滚动位置可能变化但不会触发 scroll 事件，主动校准一次
+watch([mode, currentId], () => nextTick(onAnyScroll))
 
 /** 编辑 ⇄ 预览：顶栏一个图标按钮循环切换（图标即下一个动作） */
 function toggleMode() {
@@ -363,9 +391,36 @@ const queryFolders = (q, cb) => {
         </aside>
       </div>
     </div>
+
+    <!-- 一键回到顶部：滚过一屏后浮现于内容区右下角，编辑 / 预览两态通用 -->
+    <Transition name="top-fade">
+      <button
+        v-if="showTop"
+        type="button"
+        class="fixed bottom-6 right-6 z-10 flex h-9 w-9 cursor-pointer items-center justify-center
+               rounded-full bg-surface text-tx2 shadow-lg shadow-violet-500/10 ring-1 ring-line
+               transition-colors hover:text-tx1 md:bottom-8 md:right-8"
+        title="回到顶部"
+        @click="backToTop"
+      >
+        <el-icon :size="16"><Top /></el-icon>
+      </button>
+    </Transition>
   </div>
   <div v-else class="py-20">
     <el-empty description="选择左侧笔记，或新建一篇" />
   </div>
 </template>
+
+<style scoped>
+.top-fade-enter-active,
+.top-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.top-fade-enter-from,
+.top-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+</style>
 
