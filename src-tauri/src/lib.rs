@@ -12,15 +12,32 @@ struct Backend(Mutex<Option<Child>>);
 
 const BACKEND_URL: &str = "http://127.0.0.1:8080";
 
-/** 解析应用主目录（Spring Boot 的 CWD：data/ models/ 都在其下）。 */
+/// 解析应用主目录（Spring Boot 的 CWD：data/ models/ 都在其下）。
+///
+/// 优先级：
+/// 1. `LINGXI_HOME` 环境变量——分发版把模型和数据放到别处时用它；
+/// 2. 开发态：exe 在 `src-tauri/target/{debug,release}/` 下，主目录应是项目根（data/ models/ 在那）；
+/// 3. 安装态：exe 所在目录就是 `$INSTDIR`，安装器把 jar 装在它的 `target/` 子目录下。
 fn resolve_home() -> PathBuf {
     if let Ok(home) = std::env::var("LINGXI_HOME") {
         if !home.trim().is_empty() {
             return PathBuf::from(home);
         }
     }
-    // 第一版本机版：默认项目目录；分发版（决策 20 下一步）改 AppData + 资源内嵌
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            return project_root_of(dir).unwrap_or_else(|| dir.to_path_buf());
+        }
+    }
     PathBuf::from(r"D:\project_learning\LLM_native_notebool")
+}
+
+/// 开发态定位项目根：路径上同时有 `src-tauri/` 与 `pom.xml` 的那一层。
+/// 安装态没有这个结构，返回 None，调用方退回 exe 所在目录。
+fn project_root_of(dir: &std::path::Path) -> Option<PathBuf> {
+    dir.ancestors()
+        .find(|a| a.join("src-tauri").is_dir() && a.join("pom.xml").is_file())
+        .map(|a| a.to_path_buf())
 }
 
 fn spawn_backend(home: &PathBuf) -> std::io::Result<Child> {
@@ -124,7 +141,7 @@ pub fn run() {
                     if let Some(w) = window {
                         let _ = w.eval(&format!(
                             "window.__showBackendError({:?})",
-                            format!("后端进程启动失败：{e}")
+                            format!("后端进程启动失败：{e}\n请确认已安装 Java 21 或更高版本且 java 命令在 PATH 中、{}/target/lingxi.jar 存在", home.display())
                         ));
                     }
                 }

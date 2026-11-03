@@ -1,0 +1,77 @@
+﻿灵犀 · 模型文件放置说明
+==========================
+
+安装器不携带模型文件（合计约 1.1 GB）。请按下面两个目录放置文件，
+放好后重新启动灵犀即可。目录已由安装器创建好，直接把文件丢进去就行。
+
+首次启动如果提示「缺少嵌入模型」，就是这里还没放文件。
+
+
+一、嵌入模型（必需）
+--------------------
+缺它整个检索层就不成立，应用起不来。
+
+放到：models\embedding\Multilingual-E5-small\
+
+    model.onnx        470 MB
+    tokenizer.json     17 MB
+
+HuggingFace 下载：
+    https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/onnx/model.onnx
+    https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/onnx/tokenizer.json
+
+国内镜像（huggingface.co 访问不通时用）：
+    https://hf-mirror.com/intfloat/multilingual-e5-small/resolve/main/onnx/model.onnx
+    https://hf-mirror.com/intfloat/multilingual-e5-small/resolve/main/onnx/tokenizer.json
+
+
+二、重排模型（可选，可后补）
+----------------------------
+作用是对检索结果做一次精排，提升问答引用的准确度。
+**不下载也能用**，只是少了重排这一层（检索照常工作）。
+
+放到：models\reranker\onnx-communitybge-reranker-v2-m3-ONNX\
+
+    model_int8.onnx  544 MB
+    tokenizer.json    17 MB
+
+HuggingFace 下载：
+    https://huggingface.co/onnx-community/bge-reranker-v2-m3-ONNX/resolve/main/model_int8.onnx
+    https://huggingface.co/onnx-community/bge-reranker-v2-m3-ONNX/resolve/main/tokenizer.json
+
+国内镜像：
+    https://hf-mirror.com/onnx-community/bge-reranker-v2-m3-ONNX/resolve/main/model_int8.onnx
+    https://hf-mirror.com/onnx-community/bge-reranker-v2-m3-ONNX/resolve/main/tokenizer.json
+
+注意：这个模型必须是**输出相关性 logit [N,1]** 的导出（上面这个 int8 版本就是）。
+下载到「输出 hidden states」的坏导出时，应用不会报错，但排序等于用噪声——
+启动自检会直接失败并说明原因。
+
+
+三、命令行批量下载（可选）
+--------------------------
+在安装目录打开 PowerShell 执行：
+
+    $h = "https://huggingface.co"
+    # 国内镜像把 $h 换成 "https://hf-mirror.com"
+
+    New-Item -ItemType Directory -Force -Path models\embedding\Multilingual-E5-small
+    New-Item -ItemType Directory -Force -Path models\reranker\onnx-communitybge-reranker-v2-m3-ONNX
+
+    Invoke-WebRequest "$h/intfloat/multilingual-e5-small/resolve/main/onnx/model.onnx" `
+      -OutFile models\embedding\Multilingual-E5-small\model.onnx
+    Invoke-WebRequest "$h/intfloat/multilingual-e5-small/resolve/main/onnx/tokenizer.json" `
+      -OutFile models\embedding\Multilingual-E5-small\tokenizer.json
+
+    Invoke-WebRequest "$h/onnx-community/bge-reranker-v2-m3-ONNX/resolve/main/model_int8.onnx" `
+      -OutFile models\reranker\onnx-communitybge-reranker-v2-m3-ONNX\model_int8.onnx
+    Invoke-WebRequest "$h/onnx-community/bge-reranker-v2-m3-ONNX/resolve/main/tokenizer.json" `
+      -OutFile models\reranker\onnx-communitybge-reranker-v2-m3-ONNX\tokenizer.json
+
+
+四、其它运行前提
+----------------
+- Java 21 或更高版本：`java` 命令需要在 PATH 中。应用启动时是它拉起后端服务，
+  找不到 java 会在启动页提示「后端进程启动失败」。
+- 数据目录 data\ 自动创建（笔记数据库、向量库、后端日志都在这里）。
+- 想换应用主目录（放模型和数据的地方）：设置环境变量 LINGXI_HOME 指向那个目录。

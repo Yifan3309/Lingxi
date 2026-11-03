@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 
 /**
@@ -41,6 +42,7 @@ public class RagConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "app.rag", name = "reranker-enabled", havingValue = "true")
+    @Conditional(OnnxRerankerModelPresent.class)
     public ScoringModel rerankScoringModel(RagProperties props) {
         if ("http".equalsIgnoreCase(props.rerankerProvider())) {
             try {
@@ -159,6 +161,12 @@ public class RagConfig {
                 .chatMemoryProvider(memoryId ->
                         new AttachmentChatMemory(MessageWindowChatMemory.withMaxMessages(20)));
         ScoringModel scoringModel = reranker.getIfAvailable();
+        if (scoringModel == null) {
+            // 两种情况都会到这里：reranker-enabled=false，或重排模型文件还没下载
+            // （分发版不携带模型文件，见《模型放置说明.txt》）。降级为不做重排，检索照常。
+            log.info("重排未启用：app.rag.reranker-enabled=false，或 models/ 下的重排模型文件缺失"
+                    + "（重排模型可后补，见安装目录《模型放置说明.txt》）");
+        }
         // 统一走 DefaultRetrievalAugmentor：附件增强提问先还原成原问题再召回/重排
         // （AttachmentQueryTransformer），否则 3 万字附件会污染查询向量
         DefaultRetrievalAugmentor.DefaultRetrievalAugmentorBuilder augmentor = DefaultRetrievalAugmentor.builder()

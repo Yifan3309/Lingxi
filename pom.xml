@@ -82,10 +82,16 @@
                 </exclusion>
             </exclusions>
         </dependency>
-        <!-- ONNX Runtime GPU：内置 CUDA EP + CPU EP（CPU 能力保留，EP 级回退）。需 NVIDIA 驱动 + CUDA 12.x + cuDNN 9.x -->
+        <!-- ONNX Runtime（CPU 版）：JVM 侧只用 CPU EP。
+             原来引的是 onnxruntime_gpu（551MB，自带 CUDA/cuDNN），但决策 14/15 已定：
+             Windows 下 JVM 内加载 CUDA provider 必失败（DllMain 1114），GPU 重排只能走
+             reranker-service/ 的 Python sidecar（那边自带 GPU runtime，与本 jar 无关）。
+             也就是说这个 GPU jar 在分发版里是纯死重量——换 CPU 版后 jar 从 683MB 降到 ~215MB
+             （CPU 版 88MB，省下 460MB 的 CUDA/cuDNN），安装包才装得下去。
+             两个 langchain4j 依赖仍排除各自传递进来的 onnxruntime，由这里统一锁版本。 -->
         <dependency>
             <groupId>com.microsoft.onnxruntime</groupId>
-            <artifactId>onnxruntime_gpu</artifactId>
+            <artifactId>onnxruntime</artifactId>
             <version>1.20.0</version>
         </dependency>
         <!-- 多模态导入一级解析：Apache Tika（pdf/docx/pptx/html/txt... 统一文本抽取） -->
