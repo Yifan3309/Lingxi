@@ -1,8 +1,11 @@
 target/
-!.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 .kotlin
+
+### Maven Wrapper ###
+# 本项目不用 wrapper（系统 mvn 即可，见 AGENTS.md）；留着空目录只是本地残留
+.mvn/
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
@@ -89,4 +92,22 @@ desktop.ini
 
 ### 前端构建缓存 / Python 测试缓存 ###
 frontend/.vite/
+# vite 若改 outDir 指向这里
+frontend/dist/
+*.tsbuildinfo
 reranker-service/.pytest_cache/
+.pytest_cache/
+.venv/
+**/__pycache__/
+*.py[cod]
+
+### 运行残留 ###
+# 任何层级的日志（后端日志落在 data/，已被 /data/ 覆盖）
+*.log
+nohup.out
+# JVM 崩溃日志：落在进程 CWD，开发态就是仓库根
+hs_err_pid*.log
+replay_pid*.log
+
+### 补丁残留 ###
+*.rej
