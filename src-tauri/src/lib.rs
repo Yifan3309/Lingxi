@@ -18,6 +18,10 @@ const BACKEND_URL: &str = "http://127.0.0.1:8080";
 /// 1. `LINGXI_HOME` 环境变量——分发版把模型和数据放到别处时用它；
 /// 2. 开发态：exe 在 `src-tauri/target/{debug,release}/` 下，主目录应是项目根（data/ models/ 在那）；
 /// 3. 安装态：exe 所在目录就是 `$INSTDIR`，安装器把 jar 装在它的 `target/` 子目录下。
+///
+/// **不要在这里写死某个开发机的路径**：后端所有数据目录都是相对 CWD 解析的
+/// （./data/notes、data/embeddings.json、data/runtime-config.json），
+/// CWD 由本函数决定，于是"装到哪、数据就落在哪"，不会串到开发环境的数据。
 fn resolve_home() -> PathBuf {
     if let Ok(home) = std::env::var("LINGXI_HOME") {
         if !home.trim().is_empty() {
@@ -29,7 +33,8 @@ fn resolve_home() -> PathBuf {
             return project_root_of(dir).unwrap_or_else(|| dir.to_path_buf());
         }
     }
-    PathBuf::from(r"D:\project_learning\LLM_native_notebool")
+    // current_exe 失败是极端情况：退回当前工作目录，而不是某个固定路径
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 /// 开发态定位项目根：路径上同时有 `src-tauri/` 与 `pom.xml` 的那一层。
