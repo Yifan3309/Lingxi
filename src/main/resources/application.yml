@@ -107,6 +107,22 @@ app:
         chat-model: qwen3:8b
         temperature: 0.7
         timeout: 120s
+    extract:                          # 概念抽取 / 主题分组：默认关掉思考，别让它占那 512/2048 的输出预算
+      # max_tokens 是生成总预算，思考与正文共用；关掉 returnThinking 只是不把思考递出来，
+      # 推理照样吃预算，正文可能返回空 → 旧逻辑会当成"这篇没概念"清空旧数据。
+      # 所以在请求侧关：Ollama 走原生 think(false)（代码内置），云端靠下面这组参数原样拼进请求体。
+      # 只影响抽取，**对话模型不碰这些参数**（对话的思考照旧显示折叠框）。
+      #
+      # 2026-11 实测（mimo-v2.6-flash，同一抽取 prompt、maxTokens 512）：
+      #   thinking.type=disabled  → 思考增量 58 → 0 字，正文正常返回 JSON，耗时 30s → 6s  ← 有效
+      #   enable_thinking=false   → 仍思考 98 字，该端点忽略此参数                          ← 无效（但无害）
+      # 所以 mimo / 智谱 GLM-4.5+ 用下面这组；千问/vLLM 才用 enable_thinking。
+      #
+      # 若端点不认这个字段会返回 400（抽取是后台任务，只记 WARN 不影响保存），那就改成 {}。
+      disable-thinking:
+        thinking:
+          type: disabled
+        # 千问/vLLM 换这一行：enable_thinking: false
     embedding:
       provider: onnx   # onnx = 本地模型，无需网络与密钥；最终态换 ollama
       onnx:

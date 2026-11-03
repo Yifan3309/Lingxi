@@ -31,6 +31,8 @@ public class AiModelConfig {
 
     /** 概念抽取的输出上限：只返回名字数组，512 足够，无上限等于允许无限生成 */
     private static final int CONCEPT_NUM_PREDICT = 512;
+    /** 主题分组要返回几十个成员名，512 不够，给 2048 */
+    private static final int THEME_NUM_PREDICT = 2048;
     /**
      * 概念抽取超时。取 60s 而不是对话那档 120s：抽取正常 1 秒，
      * 到这个量级基本是模型在异常生成，宁可失败留空也不要占住单线程队列。
@@ -41,30 +43,45 @@ public class AiModelConfig {
     public SwappableModels.Chat chatModel(AiProperties props,
                                           RuntimeModelConfig runtime,
                                           TokenUsageLoggingListener listener) {
-        List<ChatModelListener> listeners = List.of(listener);
         String provider = runtime.effectiveChatProvider(props.chat().provider());
-        ChatModel concrete = switch (provider) {
-            case "openai-compatible" -> openAiChat(resolveChat(props, runtime), listeners);
-            case "ollama" -> ollamaChat(resolveChat(props, runtime), listeners);
-            default -> throw new IllegalStateException(
-                    "未知的 app.ai.chat.provider: " + provider + "，支持 openai-compatible / ollama");
-        };
-        return new SwappableModels.Chat(concrete);
+        return new SwappableModels.Chat(chatModelOf(provider, resolveChat(props, runtime), List.of(listener)));
     }
 
     @Bean
     public SwappableModels.Streaming streamingChatModel(AiProperties props,
                                                         RuntimeModelConfig runtime,
                                                         TokenUsageLoggingListener listener) {
-        List<ChatModelListener> listeners = List.of(listener);
         String provider = runtime.effectiveChatProvider(props.chat().provider());
-        StreamingChatModel concrete = switch (provider) {
-            case "openai-compatible" -> openAiStreaming(resolveChat(props, runtime), listeners);
-            case "ollama" -> ollamaStreaming(resolveChat(props, runtime), listeners);
+        return new SwappableModels.Streaming(
+                streamingModelOf(provider, resolveChat(props, runtime), List.of(listener)));
+    }
+
+    /**
+     * 对话模型构建的<b>唯一实现</b>：启动装配、热切换（AdminController.rebuildChat）、
+     * 连通性 ping 三处都必须走这里。
+     *
+     * <p>曾经三处各写一份，云端分支漏了 {@code returnThinking} 而本地分支有——表现为
+     * 「Ollama 有思考、云端没有」，且只改启动装配时热切换一次配置思考又消失。
+     * 参数语义与 {@link #resolveChat} 同理：复制实现必然漂移，禁止再各写一份。
+     */
+    public static ChatModel chatModelOf(String provider, EffectiveChat c, List<ChatModelListener> listeners) {
+        return switch (provider) {
+            case "openai-compatible" -> openAiChat(c, listeners);
+            case "ollama" -> ollamaChat(c, listeners);
             default -> throw new IllegalStateException(
                     "未知的 app.ai.chat.provider: " + provider + "，支持 openai-compatible / ollama");
         };
-        return new SwappableModels.Streaming(concrete);
+    }
+
+    /** 流式对话模型构建的唯一实现，语义同 {@link #chatModelOf}。 */
+    public static StreamingChatModel streamingModelOf(String provider, EffectiveChat c,
+                                                      List<ChatModelListener> listeners) {
+        return switch (provider) {
+            case "openai-compatible" -> openAiStreaming(c, listeners);
+            case "ollama" -> ollamaStreaming(c, listeners);
+            default -> throw new IllegalStateException(
+                    "未知的 app.ai.chat.provider: " + provider + "，支持 openai-compatible / ollama");
+        };
     }
 
     @Bean
@@ -84,16 +101,23 @@ public class AiModelConfig {
     }
 
     /**
-     * 概念抽取专用模型：<b>不能复用对话模型</b>，三处参数不收紧直接导致抽取挂死。
+     * 概念抽取专用模型。<b>模型与对话相同，但输出预算收紧、并且显式关掉思考。</b>
      *
      * <p>实测（qwen_3.5_2BQ4）：对话模型是思考模型、没设输出上限、上下文用模型默认的 262k。
      * 拿它做抽取时思考会一直生成、content 为空，单篇跑满 120s 超时后 langchain4j 还会自动重试，
      * 单篇近 3 分钟才失败一次；线程栈停在 {@code OllamaChatModel.chat}，队列看起来完全卡死
      * （只抽完 1 篇、积压 33 篇、概念数 0）。收紧后单篇约 1 秒。
      *
+     * <p><b>关键：思考要"不产生"，而不是"产生了不用"。</b>OpenAI 兼容端点的 {@code max_tokens}
+     * 是<b>生成总预算</b>，reasoning token 与正文共用它——只把 {@code returnThinking} 关掉，
+     * 思考一样消耗预算，512 照样被吃空、content 返回空字符串。所以必须在请求侧就关：
+     *
      * <ul>
-     *   <li>{@code think(false)}：思考模型的推理对"抽名词"是纯开销，只会吃掉输出预算</li>
-     *   <li>{@code numPredict(512)}：输出只是一个名字数组；无上限等于允许无限生成</li>
+     *   <li>Ollama：原生的 {@code think(false)}</li>
+     *   <li>云端：{@code app.ai.extract.disable-thinking} 里的厂商参数，经 {@code customParameters}
+     *       原样拼进请求体（Jackson 的 {@code @JsonAnyGetter}，见 ChatCompletionRequest）。
+     *       字段名各家不同——智谱/GLM 是 {@code thinking.type=disabled}，千问兼容端点是
+     *       {@code enable_thinking=false}——所以做成配置而不是写死某一家的。</li>
      * </ul>
      *
      * <p><b>刻意不设 numCtx。</b>抽取值 8192、对话用模型默认（这个模型是 262144），
@@ -107,30 +131,8 @@ public class AiModelConfig {
     public ChatModel conceptChatModel(AiProperties props,
                                       RuntimeModelConfig runtime,
                                       TokenUsageLoggingListener listener) {
-        EffectiveChat c = resolveChat(props, runtime);
-        List<ChatModelListener> listeners = List.of(listener);
-        if ("ollama".equals(runtime.effectiveChatProvider(props.chat().provider()))) {
-            return OllamaChatModel.builder()
-                    .baseUrl(c.baseUrl())
-                    .modelName(c.model())
-                    .temperature(0.0)
-                    .think(false)
-                    .numPredict(CONCEPT_NUM_PREDICT)
-                    .responseFormat(ResponseFormat.JSON)
-                    .timeout(CONCEPT_TIMEOUT)
-                    .listeners(listeners)
-                    .build();
-        }
-        return OpenAiChatModel.builder()
-                .baseUrl(c.baseUrl())
-                .apiKey(c.apiKey())
-                .modelName(c.model())
-                .temperature(0.0)
-                .maxTokens(CONCEPT_NUM_PREDICT)
-                .responseFormat(ResponseFormat.JSON)
-                .timeout(CONCEPT_TIMEOUT)
-                .listeners(listeners)
-                .build();
+        return extractModelOf(runtime.effectiveChatProvider(props.chat().provider()),
+                resolveChat(props, runtime), CONCEPT_NUM_PREDICT, disableThinkingParams(props), List.of(listener));
     }
 
     /**
@@ -143,30 +145,55 @@ public class AiModelConfig {
     public ChatModel themeChatModel(AiProperties props,
                                     RuntimeModelConfig runtime,
                                     TokenUsageLoggingListener listener) {
-        EffectiveChat c = resolveChat(props, runtime);
-        List<ChatModelListener> listeners = List.of(listener);
-        if ("ollama".equals(runtime.effectiveChatProvider(props.chat().provider()))) {
-            return OllamaChatModel.builder()
+        return extractModelOf(runtime.effectiveChatProvider(props.chat().provider()),
+                resolveChat(props, runtime), THEME_NUM_PREDICT, disableThinkingParams(props), List.of(listener));
+    }
+
+    /** 云端抽取要拼进请求体的"别思考"参数；没配就是空 Map（不发送任何额外字段）。 */
+    public static Map<String, Object> disableThinkingParams(AiProperties props) {
+        AiProperties.Extract ex = props.extract();
+        return ex == null || ex.disableThinking() == null ? Map.of() : ex.disableThinking();
+    }
+
+    /**
+     * 后台抽取类模型的唯一构建入口：概念抽取（512）与主题分组（2048）只差输出预算。
+     *
+     * <p>与 {@link #chatModelOf} 分开不是因为风格：这里必须固定 temperature 0、JSON 输出、
+     * 60s 超时，而且一定要关掉思考——这些参数被误改会直接让抽取挂死或返回空，
+     * 而对话模型的参数是给人调的。
+     *
+     * @param vendorParams 云端用于关闭思考的厂商参数，原样并入请求体；Ollama 分支忽略它（走 think(false)）
+     */
+    public static ChatModel extractModelOf(String provider, EffectiveChat c, int maxTokens,
+                                           Map<String, Object> vendorParams, List<ChatModelListener> listeners) {
+        return switch (provider) {
+            case "ollama" -> OllamaChatModel.builder()
                     .baseUrl(c.baseUrl())
                     .modelName(c.model())
                     .temperature(0.0)
                     .think(false)
-                    .numPredict(2048)
+                    .numPredict(maxTokens)
                     .responseFormat(ResponseFormat.JSON)
                     .timeout(CONCEPT_TIMEOUT)
                     .listeners(listeners)
                     .build();
-        }
-        return OpenAiChatModel.builder()
-                .baseUrl(c.baseUrl())
-                .apiKey(c.apiKey())
-                .modelName(c.model())
-                .temperature(0.0)
-                .maxTokens(2048)
-                .responseFormat(ResponseFormat.JSON)
-                .timeout(CONCEPT_TIMEOUT)
-                .listeners(listeners)
-                .build();
+            case "openai-compatible" -> OpenAiChatModel.builder()
+                    .baseUrl(c.baseUrl())
+                    .apiKey(c.apiKey())
+                    .modelName(c.model())
+                    .temperature(0.0)
+                    // returnThinking(false) 只是不把思考交给我们，思考本身照常生成、照常占预算；
+                    // 真正让思考不占预算的是 vendorParams（请求侧关闭）。
+                    .returnThinking(false)
+                    .customParameters(vendorParams == null ? Map.of() : vendorParams)
+                    .maxTokens(maxTokens)
+                    .responseFormat(ResponseFormat.JSON)
+                    .timeout(CONCEPT_TIMEOUT)
+                    .listeners(listeners)
+                    .build();
+            default -> throw new IllegalStateException(
+                    "未知的 app.ai.chat.provider: " + provider + "，支持 openai-compatible / ollama");
+        };
     }
 
     @Bean
@@ -237,29 +264,39 @@ public class AiModelConfig {
         return new EffectiveVision(baseUrl, apiKey, model);
     }
 
-    private ChatModel openAiChat(EffectiveChat c, List<ChatModelListener> listeners) {
+    private static ChatModel openAiChat(EffectiveChat c, List<ChatModelListener> listeners) {
         return OpenAiChatModel.builder()
                 .baseUrl(c.baseUrl())
                 .apiKey(c.apiKey())
                 .modelName(c.model())
                 .temperature(c.temperature())
                 .timeout(c.timeout())
+                // 与 ollama 分支对称：OpenAI 兼容端点把思考放在响应的 reasoning_content 字段，
+                // 不开这个开关 langchain4j 会静默丢弃（ChatCompletionEventDispatcher 按此布尔门控
+                // onPartialThinking，非流式则看 OpenAiUtils.aiMessageFrom(response, returnThinking)）。
+                // 本地 qwen3 会思考、云端 mimo/GLM-4.5/deepseek-reasoner 也会，之前只有本地开了，
+                // 表现为「Ollama 有折叠思考框、云端没有」。
+                // returnThinking 只影响响应解析，不往请求塞任何参数。智谱 thinking.type、Qwen
+                // enable_thinking 这类「请求侧开思考」的厂商字段，langchain4j 只能靠 customParameters
+                // 注入（本项目尚未开放该配置项）；模型默认思考的端点不需要它。
+                .returnThinking(true)
                 .listeners(listeners)
                 .build();
     }
 
-    private StreamingChatModel openAiStreaming(EffectiveChat c, List<ChatModelListener> listeners) {
+    private static StreamingChatModel openAiStreaming(EffectiveChat c, List<ChatModelListener> listeners) {
         return OpenAiStreamingChatModel.builder()
                 .baseUrl(c.baseUrl())
                 .apiKey(c.apiKey())
                 .modelName(c.model())
                 .temperature(c.temperature())
                 .timeout(c.timeout())
+                .returnThinking(true)
                 .listeners(listeners)
                 .build();
     }
 
-    private ChatModel ollamaChat(EffectiveChat c, List<ChatModelListener> listeners) {
+    private static ChatModel ollamaChat(EffectiveChat c, List<ChatModelListener> listeners) {
         return OllamaChatModel.builder()
                 .baseUrl(c.baseUrl())
                 .modelName(c.model())
@@ -272,7 +309,7 @@ public class AiModelConfig {
                 .build();
     }
 
-    private StreamingChatModel ollamaStreaming(EffectiveChat c, List<ChatModelListener> listeners) {
+    private static StreamingChatModel ollamaStreaming(EffectiveChat c, List<ChatModelListener> listeners) {
         return OllamaStreamingChatModel.builder()
                 .baseUrl(c.baseUrl())
                 .modelName(c.model())

@@ -1,7 +1,11 @@
 package org.example.config;
 
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -24,7 +28,8 @@ class AiModelConfigTest {
                         new AiProperties.Ollama(OL_BASE, "ol-chat", null, 0.7, java.time.Duration.ofSeconds(120))),
                 new AiProperties.Embedding("onnx", null, null,
                         new AiProperties.Onnx("m", "t", "MEAN")),
-                new AiProperties.Vision("glm-4v-flash", "https://vision.example/v1", "vision-key", java.time.Duration.ofSeconds(120)));
+                new AiProperties.Vision("glm-4v-flash", "https://vision.example/v1", "vision-key", java.time.Duration.ofSeconds(120)),
+                new AiProperties.Extract(null));
     }
 
     private static RuntimeModelConfig runtime(String provider, String model, String baseUrl, String apiKey, String visionModel) {
@@ -112,7 +117,8 @@ class AiModelConfigTest {
     void visionFallsBackToYmlChatBase() {
         AiProperties p = new AiProperties(
                 props().chat(), props().embedding(),
-                new AiProperties.Vision("glm-4v-flash", null, null, java.time.Duration.ofSeconds(120)));
+                new AiProperties.Vision("glm-4v-flash", null, null, java.time.Duration.ofSeconds(120)),
+                props().extract());
 
         AiModelConfig.EffectiveVision v = AiModelConfig.resolveVision(p, runtime(null, null, null, null, null));
 
@@ -147,5 +153,109 @@ class AiModelConfigTest {
         AiModelConfig.EffectiveChat c = AiModelConfig.resolveChat(props(), r);
         assertThat(c.baseUrl()).isEqualTo("https://api.deepseek.com/v1");
         assertThat(c.model()).isEqualTo("deepseek-chat");
+    }
+
+    /**
+     * 思考开关的对称性回归。
+     * 背景：ollama 分支写了 returnThinking(true)、openai 兼容分支漏了，langchain4j 按这个布尔
+     * 门控 onPartialThinking，于是「本地有折叠思考框、云端没有」。而且热切换曾经另有一份构建代码，
+     * 只改启动装配会出现「重启有、切一次模型就没」——现在两边都只走 chatModelOf/streamingModelOf。
+     */
+    @Test
+    @DisplayName("装配：两条 provider 分支都打开 returnThinking，云端 reasoning_content 不被丢弃")
+    void bothProvidersReturnThinking() throws Exception {
+        AiModelConfig.EffectiveChat cloud = new AiModelConfig.EffectiveChat(
+                "https://api.xiaomimimo.com/v1", "k", "mimo-v2.6-flash", 0.7, java.time.Duration.ofSeconds(60));
+        AiModelConfig.EffectiveChat local = new AiModelConfig.EffectiveChat(
+                OL_BASE, null, "qwen3:8b", 0.7, java.time.Duration.ofSeconds(120));
+
+        assertThat(returnThinkingOf(AiModelConfig.chatModelOf("openai-compatible", cloud, List.of()))).isTrue();
+        assertThat(returnThinkingOf(AiModelConfig.streamingModelOf("openai-compatible", cloud, List.of()))).isTrue();
+        assertThat(returnThinkingOf(AiModelConfig.chatModelOf("ollama", local, List.of()))).isTrue();
+        assertThat(returnThinkingOf(AiModelConfig.streamingModelOf("ollama", local, List.of()))).isTrue();
+    }
+
+    /** 读模型实例上的 returnThinking 字段（各实现的声明位置不同：直接字段或 OllamaBaseChatModel）。 */
+    private static boolean returnThinkingOf(Object model) throws Exception {
+        for (Class<?> k = model.getClass(); k != null; k = k.getSuperclass()) {
+            try {
+                java.lang.reflect.Field f = k.getDeclaredField("returnThinking");
+                f.setAccessible(true);
+                return f.getBoolean(model);
+            } catch (NoSuchFieldException ignored) {
+                // 继续往父类找
+            }
+        }
+        throw new AssertionError("未找到 returnThinking 字段：" + model.getClass().getName());
+    }
+
+    @Test
+    @DisplayName("装配：未知 provider 直接失败，不静默回落")
+    void unknownProviderFails() {
+        AiModelConfig.EffectiveChat c = new AiModelConfig.EffectiveChat(OC_BASE, "k", "m", 0.7, java.time.Duration.ofSeconds(60));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> AiModelConfig.chatModelOf("azure", c, List.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("azure");
+    }
+
+    /**
+     * 抽取模型"让思考不占预算"的装配回归。
+     * 背景：max_tokens 是生成总预算，思考与正文共用；只关 returnThinking 只是不把思考递出来，
+     * 推理照样吃预算，512 被吃空后正文为空——而空正文旧实现会被当成"这篇没概念"，清空旧概念。
+     * 所以必须在请求侧关：Ollama 用 think(false)，云端用 app.ai.extract.disable-thinking 透传。
+     */
+    @Test
+    @DisplayName("抽取模型：未配置 disable-thinking 时不发送任何额外字段")
+    void extractVendorParamsEmptyByDefault() {
+        assertThat(AiModelConfig.disableThinkingParams(props())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("抽取模型：disable-thinking 原样透传给云端请求体")
+    void extractVendorParamsPassThrough() {
+        Map<String, Object> off = Map.of("thinking", Map.of("type", "disabled"));
+        AiProperties p = new AiProperties(props().chat(), props().embedding(), props().vision(),
+                new AiProperties.Extract(off));
+
+        assertThat(AiModelConfig.disableThinkingParams(p))
+                .containsEntry("thinking", Map.of("type", "disabled"));
+    }
+
+    @Test
+    @DisplayName("抽取模型：两条 provider 分支都能装配，未知 provider 直接失败")
+    void extractModelBuildsForBothProviders() {
+        AiModelConfig.EffectiveChat cloud = new AiModelConfig.EffectiveChat(OC_BASE, "k", "m", 0.7, java.time.Duration.ofSeconds(60));
+        AiModelConfig.EffectiveChat local = new AiModelConfig.EffectiveChat(OL_BASE, null, "qwen3:8b", 0.7, java.time.Duration.ofSeconds(120));
+        Map<String, Object> off = Map.of("thinking", Map.of("type", "disabled"));
+
+        assertThat(AiModelConfig.extractModelOf("openai-compatible", cloud, 512, off, List.of())).isNotNull();
+        assertThat(AiModelConfig.extractModelOf("ollama", local, 2048, off, List.of())).isNotNull();
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> AiModelConfig.extractModelOf("azure", cloud, 512, Map.of(), List.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("azure");
+    }
+
+    /**
+     * 「抽取关思考、对话不受影响」这条边界的回归。
+     * 抽取默认发 thinking.type=disabled（让思考不占 512 的预算）；
+     * 对话模型必须一个字节都不带，否则用户的对话思考框会被这一行关掉。
+     */
+    @Test
+    @DisplayName("边界：关思考参数只进抽取模型，对话模型不携带")
+    void thinkingOffOnlyAppliesToExtract() {
+        Map<String, Object> off = Map.of("thinking", Map.of("type", "disabled"));
+        AiModelConfig.EffectiveChat cloud = new AiModelConfig.EffectiveChat(OC_BASE, "k", "m", 0.7, java.time.Duration.ofSeconds(60));
+
+        OpenAiChatModel extract = (OpenAiChatModel) AiModelConfig.extractModelOf(
+                "openai-compatible", cloud, 512, off, List.of());
+        OpenAiChatModel chat = (OpenAiChatModel) AiModelConfig.chatModelOf(
+                "openai-compatible", cloud, List.of());
+
+        assertThat(extract.defaultRequestParameters().customParameters())
+                .containsEntry("thinking", Map.of("type", "disabled"));
+        assertThat(chat.defaultRequestParameters().customParameters()).isNullOrEmpty();
     }
 }

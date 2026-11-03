@@ -51,4 +51,16 @@ class ConceptExtractorTest {
                 ConceptExtractor.parseNames("好的，下面是抽取结果：{\"entities\":[\"缓存\"]}", mapper))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("空正文（思考吃满输出预算/被截断）也是失败，不能当\"没有概念\"")
+    void blankOutputThrows() {
+        assertThatThrownBy(() -> ConceptExtractor.parseNames("", mapper))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("空内容");
+        assertThatThrownBy(() -> ConceptExtractor.parseNames("   \n ", mapper))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ConceptExtractor.parseNames(null, mapper))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }
