@@ -17,6 +17,7 @@ import org.example.observability.TokenUsageLoggingListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -199,6 +200,20 @@ public class AiModelConfig {
     @Bean
     public EmbeddingModel embeddingModel(AiProperties props) {
         AiProperties.Embedding cfg = props.embedding();
+        if ("onnx".equals(cfg.provider())) {
+            // 分发版不携带模型文件（安装器只指引用户自行下载），缺文件时给一句能照做的提示，
+            // 而不是把 ONNX Runtime 的原始异常抛到用户面前
+            Path modelPath = Path.of(cfg.onnx().modelPath());
+            if (!Files.exists(modelPath)) {
+                throw new IllegalStateException("缺少嵌入模型：" + modelPath.toAbsolutePath()
+                        + "。请按安装目录下的《模型放置说明.txt》从 HuggingFace 下载后放到该位置"
+                        + "（HuggingFace 访问不通时可改用镜像 hf-mirror.com）。");
+            }
+            return new OnnxEmbeddingModel(
+                    modelPath,
+                    Path.of(cfg.onnx().tokenizerPath()),
+                    PoolingMode.valueOf(cfg.onnx().poolingMode()));
+        }
         return switch (cfg.provider()) {
             case "openai-compatible" -> OpenAiEmbeddingModel.builder()
                     .baseUrl(cfg.openaiCompatible().baseUrl())
@@ -211,10 +226,6 @@ public class AiModelConfig {
                     .modelName(cfg.ollama().embeddingModel())
                     .timeout(cfg.ollama().timeout())
                     .build();
-            case "onnx" -> new OnnxEmbeddingModel(
-                    Path.of(cfg.onnx().modelPath()),
-                    Path.of(cfg.onnx().tokenizerPath()),
-                    PoolingMode.valueOf(cfg.onnx().poolingMode()));
             default -> throw new IllegalStateException(
                     "未知的 app.ai.embedding.provider: " + cfg.provider() + "，支持 openai-compatible / ollama / onnx");
         };
