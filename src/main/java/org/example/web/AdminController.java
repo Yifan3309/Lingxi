@@ -3,9 +3,6 @@ package org.example.web;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.listener.ChatModelListener;
 import dev.langchain4j.model.openai.OpenAiChatModel;
-import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
-import dev.langchain4j.model.ollama.OllamaChatModel;
-import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 import org.example.config.AiModelConfig;
 import org.example.config.AiProperties;
 import org.example.config.RuntimeModelConfig;
@@ -135,9 +132,11 @@ public class AdminController {
         String key = ollama ? null : pick(body.chat() != null ? body.chat().apiKey() : null, c.apiKey());
         long start = System.nanoTime();
         try {
-            ChatModel probe = ollama
-                    ? OllamaChatModel.builder().baseUrl(url).modelName(model).timeout(Duration.ofSeconds(30)).build()
-                    : OpenAiChatModel.builder().baseUrl(url).apiKey(key).modelName(model).timeout(Duration.ofSeconds(30)).build();
+            // 走与启动装配同一个工厂：ping 用的模型参数必须与正式对话一致，
+            // 否则「测试通过、正式对话失败」这类差异查不出来。30s 短超时只覆盖连通性判断。
+            ChatModel probe = AiModelConfig.chatModelOf(provider,
+                    new AiModelConfig.EffectiveChat(url, key, model, c.temperature(), Duration.ofSeconds(30)),
+                    List.of());
             String reply = probe.chat("ping");
             return Map.of("ok", true, "latencyMs", (System.nanoTime() - start) / 1_000_000,
                     "reply", reply == null ? "" : reply);
@@ -188,31 +187,13 @@ public class AdminController {
     }
 
     /** 按 effective provider 重建 chat 与流式模型并热替换（进行中的请求继续用旧模型）。
-     *  生效值解析必须走 AiModelConfig.resolveChat——与启动装配同一实现，禁止在此重抄一份（/v1 串扰教训）。 */
+     *  生效值解析必须走 AiModelConfig.resolveChat，模型构建必须走 chatModelOf/streamingModelOf——
+     *  与启动装配同一实现，禁止在此重抄一份（/v1 串扰、returnThinking 漏配都是这么来的）。 */
     private void rebuildChat(String provider) {
         AiModelConfig.EffectiveChat c = AiModelConfig.resolveChat(props, runtime);
         List<ChatModelListener> listeners = List.of(listener);
-        if ("ollama".equals(provider)) {
-            chatModel.swap(OllamaChatModel.builder()
-                    .baseUrl(c.baseUrl()).modelName(c.model())
-                    .temperature(c.temperature()).timeout(c.timeout())
-                    .returnThinking(true)
-                    .listeners(listeners).build());
-            streamingChatModel.swap(OllamaStreamingChatModel.builder()
-                    .baseUrl(c.baseUrl()).modelName(c.model())
-                    .temperature(c.temperature()).timeout(c.timeout())
-                    .returnThinking(true)
-                    .listeners(listeners).build());
-        } else {
-            chatModel.swap(OpenAiChatModel.builder()
-                    .baseUrl(c.baseUrl()).apiKey(c.apiKey()).modelName(c.model())
-                    .temperature(c.temperature()).timeout(c.timeout())
-                    .listeners(listeners).build());
-            streamingChatModel.swap(OpenAiStreamingChatModel.builder()
-                    .baseUrl(c.baseUrl()).apiKey(c.apiKey()).modelName(c.model())
-                    .temperature(c.temperature()).timeout(c.timeout())
-                    .listeners(listeners).build());
-        }
+        chatModel.swap(AiModelConfig.chatModelOf(provider, c, listeners));
+        streamingChatModel.swap(AiModelConfig.streamingModelOf(provider, c, listeners));
     }
 
     private void rebuildVision() {

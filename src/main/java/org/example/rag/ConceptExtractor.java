@@ -192,12 +192,16 @@ public final class ConceptExtractor {
      * <p>JSON 不合法（截断、混入说明文字）必须抛出而不是吞成空列表：
      * 调用方靠「空列表 = 确实没有概念」来清空旧提及并写指纹，吞掉的话
      * 一次跑偏的响应就会把这篇笔记已有概念永久抹掉且永不重试。
-     * 与之严格区分：合法的空数组/空内容 = 真的没有概念，正常返回空。
+     * 与之严格区分：合法的空数组 = 真的没有概念，正常返回空。
+     *
+     * <p><b>空正文同样算失败</b>，不算"没有概念"。思考模型在被 max_tokens 截断时
+     * 正文就是空字符串（推理占满了整个生成预算），这跟"这篇笔记确实没有概念"
+     * 是完全不同的事——判成后者就等于用一次配置失误清空整篇的概念。
      */
     public static List<String> parseNames(String raw, ObjectMapper mapper) {
         Set<String> out = new LinkedHashSet<>();
         if (raw == null || raw.isBlank()) {
-            return List.of();
+            throw new IllegalArgumentException("概念抽取返回空内容（可能是思考占满输出预算或被截断）");
         }
         JsonNode node;
         try {
