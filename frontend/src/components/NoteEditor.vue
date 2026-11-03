@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useNotes, useFolders, relTime } from '../composables/useNotes'
 import { useUi } from '../composables/useUi'
+import { useUndoHistory } from '../composables/useUndoHistory'
 import { api } from '../api'
 import { decoratePreview, renderMarkdown } from '../markdown'
 import AiPanel from './AiPanel.vue'
@@ -241,6 +242,100 @@ async function onDelete() {
   ElMessage.success('已删除')
 }
 
+/* ---- 快捷键：Ctrl+S 保存；Ctrl+Z / Ctrl+Y 撤销重做 ---- */
+/**
+ * 撤销栈自带快照，不依赖 textarea 的原生历史：
+ * 原生历史在「切到预览再回来」时会被清空（textarea 被 v-if 重建），
+ * 程序化改值（插图、AI 回填）也会冲掉它——而这两类恰恰是最该能撤销的操作。
+ * 逻辑在 composables/useUndoHistory.js（可脱离浏览器验证）。
+ */
+const history = useUndoHistory({
+  getContent: () => current.value?.content ?? '',
+  setContent: (text) => {
+    if (current.value) {
+      current.value.content = text
+    }
+  },
+  getCaret: () => {
+    const el = textareaEl()
+    return { start: el?.selectionStart ?? 0, end: el?.selectionEnd ?? 0 }
+  },
+  setCaret: (start, end) => {
+    const el = textareaEl()
+    if (!el) {
+      return
+    }
+    el.focus()
+    el.setSelectionRange(start, end)
+  },
+  // 笔记 id 变了就清空历史：否则撤销会把上一篇的正文写进这一篇
+  scopeKey: () => currentId.value
+})
+
+function undo() {
+  return history.undo()
+}
+
+function redo() {
+  return history.redo()
+}
+
+/**
+ * 编辑区快捷键。
+ * 撤销/重做只接管正文 textarea——标题、文件夹、标签保持浏览器原生行为。
+ *
+ * <p>即使自己的栈空了也要拦下原生撤销：textarea 元素在切笔记时并没有销毁，
+ * 浏览器原生栈里可能还留着上一篇的字，一旦放行就会把它写进当前笔记。
+ */
+function onEditorKeydown(e) {
+  if (!(e.ctrlKey || e.metaKey)) {
+    return
+  }
+  const key = e.key.toLowerCase()
+  if (e.target !== textareaEl()) {
+    return
+  }
+  if (key === 'z') {
+    e.preventDefault()
+    if (e.shiftKey) {
+      redo()
+    } else {
+      undo()
+    }
+    return
+  }
+  if (key === 'y') {
+    e.preventDefault()
+    redo()
+  }
+}
+
+/**
+ * Ctrl+S 挂在 document 上：焦点跑出编辑区（点了一下列表、标签页）时，
+ * 浏览器的「保存网页」弹窗同样会冒出来，这里一并拦掉。
+ * 浮层（聊天抽屉、设置对话框）里不抢——那是另一个工作面。
+ */
+function onGlobalKeydown(e) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) {
+    return
+  }
+  if (e.key.toLowerCase() !== 's') {
+    return
+  }
+  if (e.target?.closest?.('.el-dialog, .el-drawer')) {
+    return
+  }
+  if (!current.value) {
+    // 没有打开的笔记：让浏览器自己处理（也别弹「内容不能为空」）
+    return
+  }
+  e.preventDefault()
+  onSave()
+}
+
+onMounted(() => document.addEventListener('keydown', onGlobalKeydown))
+onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
+
 /** 「更多」菜单：低频操作集中在这里，正文区保持干净 */
 function onCommand(command) {
   if (command === 'settings') {
@@ -265,7 +360,7 @@ const queryFolders = (q, cb) => {
 
 <template>
   <!-- 不再有卡片容器：标题行 + 正文直接坐在应用背景上，控件全部收纳进标题行右侧 -->
-  <div v-if="current" class="flex flex-col">
+  <div v-if="current" class="flex flex-col" @keydown="onEditorKeydown">
     <div class="flex w-full items-center gap-1.5 py-2 select-none">
       <el-icon
         class="cursor-pointer text-tx3 transition-transform duration-150 hover:text-tx1"
@@ -287,7 +382,14 @@ const queryFolders = (q, cb) => {
       <span v-else-if="saveState === 'saved'" class="ml-1 shrink-0 text-[11px] text-emerald-600">已保存</span>
 
       <div class="ml-1 flex shrink-0 items-center gap-0.5">
-        <el-button type="primary" size="small" round class="!px-3 !active:scale-95 transition-transform" @click="onSave">
+        <el-button
+          type="primary"
+          size="small"
+          round
+          class="!px-3 !active:scale-95 transition-transform"
+          title="保存 (Ctrl+S)"
+          @click="onSave"
+        >
           保存
         </el-button>
         <el-tooltip :content="mode === 'edit' ? '预览' : '编辑'" placement="bottom" :show-after="250">
