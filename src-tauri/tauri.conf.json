@@ -35,7 +35,10 @@
         "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": true,
         "installerHooks": "windows/installer-hooks.nsh",
-        "compression": "lzma"
+        "compression": "lzma",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "startMenuFolder": "灵犀"
       }
     }
   }
