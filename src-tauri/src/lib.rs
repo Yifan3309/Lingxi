@@ -114,7 +114,7 @@ pub fn run() {
                             if let Some(w) = window {
                                 let _ = w.eval(&format!(
                                     "window.__showBackendError({:?})",
-                                    format!("{e}\n请确认 target/lingxi.jar 存在、8080 端口未被占用，或用浏览器直开 {BACKEND_URL} 排查")
+                                    format!("{e}\n请确认 target/lingxi.jar 存在、models/ 下的嵌入与重排模型已就位（模型不随安装器分发）、8080 端口未被占用；后端启动日志见 data/backend.log")
                                 ));
                             }
                         }

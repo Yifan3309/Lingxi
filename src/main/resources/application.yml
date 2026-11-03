@@ -148,3 +148,12 @@ management:
 logging:
   level:
     dev.langchain4j: INFO
+  # 桌面壳把后端的 stdout/stderr 静默了（Stdio::null），启动失败的原因无处可查——
+  # 模型不随安装器分发时，缺 models/ 会让后端直接起不来，日志文件是唯一的现场。
+  # 路径相对进程 CWD（桌面版 = LINGXI_HOME），与 data/ 同一套目录约定。
+  file:
+    name: data/backend.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 3
