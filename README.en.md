@@ -14,6 +14,21 @@ LingXi puts "taking notes" and "asking your notes" into the same local app:
 - **RAG answers are grounded in your own notes**, and every answer ships with citations you can click through to the source text.
 - **The AI suggests, you decide** — tag/summary suggestions are explicitly triggered; when tokens get spent is your call.
 
+## Download
+
+Desktop (Windows x64): **[LingXi 0.2.0 installer](https://github.com/Yifan3309/Lingxi/releases/latest)**
+
+- **The installer ships no model files** (~1.1 GB). The install directory contains a 《模型放置说明.txt》 guide —
+  follow the links in it to download from HuggingFace:
+  - embedding model (**required**) → `models\embedding\Multilingual-E5-small\`
+  - reranker model (optional, can be added later) → `models\reranker\onnx-communitybge-reranker-v2-m3-ONNX\`
+    (without it the app simply runs without re-ranking)
+- **JDK 21+** must be installed system-wide (`java` on PATH)
+- On first launch, fill in provider / base-url / model / key once in the model settings
+  (**the API key is not distributed with the installer**)
+
+Prefer running it yourself as a web app? See "Quick start" below.
+
 ## Features
 
 **Notes**
@@ -126,8 +141,7 @@ mvn test                # unit tests (offline, seconds, no models/keys needed)
 ```
 
 - `postman/` holds the API acceptance suite: `postman collection run "postman/collections/second-brain api" -e "postman/environments/Local.environment.yaml"`
-- `doc/` contains design and decision records (requirements, architecture, and the trade-off log behind each milestone)
-- Primarily developed and verified on Windows; see `doc/03-技术选型.md` for stack details
+- Primarily developed and verified on Windows
 
 ## License
 

@@ -14,6 +14,19 @@
 - **RAG 问答基于你自己的笔记**，每条回答附来源引用，点击可回溯原文
 - **AI 是建议者，你是决策者**——标签/摘要建议显式触发，何时花 token 由你决定
 
+## 下载
+
+桌面版（Windows x64）：**[灵犀 0.2.0 安装包](https://github.com/Yifan3309/Lingxi/releases/latest)**
+
+- **安装器不携带模型文件**（约 1.1GB）：装好目录里有一份《模型放置说明.txt》，按里面的链接从 HuggingFace 下载
+  - 嵌入模型（**必需**）→ `models\embedding\Multilingual-E5-small\`
+  - 重排模型（可选，可后补）→ `models\reranker\onnx-communitybge-reranker-v2-m3-ONNX\`
+    （缺失时自动降级为不做重排，应用照常启动）
+- 需要系统装 **JDK 21+**（`java` 命令在 PATH 中）
+- 首次打开在「模型配置」里填一次 provider / 地址 / 模型名 / key（**API key 不随安装包分发**）
+
+想自己跑网页版：见下方「快速开始」。
+
 ## 功能特性
 
 **笔记**
@@ -123,8 +136,7 @@ mvn test                # 单元测试（离线，秒级，无需模型/密钥�
 ```
 
 - `postman/` 是接口验收套件：`postman collection run "postman/collections/second-brain api" -e "postman/environments/Local.environment.yaml"`
-- `doc/` 是设计与决策记录（需求分析、架构、各里程碑的取舍日志）
-- 主要在 Windows 下开发验证；技术栈细节见 `doc/03-技术选型.md`
+- 主要在 Windows 下开发验证
 
 ## License
 
