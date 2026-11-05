@@ -51,9 +51,9 @@ function modelSuggestions(q, cb) {
 
 const isOllama = computed(() => chatProvider.value === 'ollama')
 const modelPlaceholder = computed(() =>
-  isOllama.value ? '模型名，留空用配置默认（如 qwen3:8b）' : '模型名，留空用配置默认（如 glm-4-flash）')
+  isOllama.value ? '模型名，留空用配置默认（如 qwen3:8b）' : '模型名，留空用配置默认（如 deepseek-v4-flash）')
 const baseUrlPlaceholder = computed(() =>
-  isOllama.value ? 'http://localhost:11434' : '留空用配置文件（换服务商时填，如 DeepSeek）')
+  isOllama.value ? 'http://localhost:11434' : '留空用配置文件（换服务商时填，如 DeepSeek: https://api.deepseek.com）')
 
 /* 切 provider：从该 provider 的记忆槽回填表单（每家一份配置互不覆盖，来回切不重填） */
 function onProviderChange(p) {
