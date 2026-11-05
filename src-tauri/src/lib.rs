@@ -3,7 +3,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{Manager, RunEvent, State};
 
@@ -206,7 +206,15 @@ fn restart_backend(state: State<Backend>, app: tauri::AppHandle) {
 
 fn navigate_to_app(window: Option<&tauri::WebviewWindow>, port: u16) {
     if let Some(w) = window {
-        let _ = w.eval(&format!("location.replace('http://127.0.0.1:{port}')"));
+        // 带一个时间戳回源：WebView2 的缓存跨启动留存，旧的 index.html 会指向旧构建的
+        // chunk 名（chunk 名带内容 hash）。服务端换了 jar 之后那些文件已不存在，
+        // 动态 import 直接 404——「Failed to fetch dynamically imported module」。
+        // 后端已对 index.html 发 no-store，但升级前就缓存下来的那份仍需靠查询串绕开。
+        let bust = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = w.eval(&format!("location.replace('http://127.0.0.1:{port}/?v={bust}')"));
     }
 }
 
