@@ -38,6 +38,7 @@ Type `/` to reach common actions: `/search` notes, `/clip` a web page, `/summari
 
 **Knowledge network & review**
 - Knowledge graph: notes auto-linked by shared tags and semantic neighbors
+- **Concept layer**: concepts are extracted asynchronously after each save (a name must appear in the original text — translated names are rejected), grouped into themes by the LLM, and browsable on their own page
 - Daily / weekly review: update stats plus an AI-written narrative
 - Related-note recommendations and semantic search
 
@@ -87,6 +88,9 @@ cd src-tauri && node ../frontend/node_modules/@tauri-apps/cli/tauri.js build
 - **The installer ships no model files** (~1.1 GB): download them from HuggingFace afterwards, following the
   《模型放置说明.txt》 guide left in the install directory
 - **JDK 21+** is required at runtime (`java` on PATH)
+- **The API key is not distributed with the installer**: on first launch, fill in provider / base-url / model / key once
+- The desktop build avoids a busy port: if something else already listens on 8080 it switches to a free port in
+  8081–8099 instead of connecting to someone else's server
 
 ### Optional components
 
