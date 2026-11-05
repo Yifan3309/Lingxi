@@ -13,7 +13,10 @@
 
     <groupId>org.example</groupId>
     <artifactId>LLM_native_notebook</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <!-- 与桌面壳版本保持一致（tauri.conf.json / Cargo.toml 同为 0.2.0）：
+         否则打出来的 jar 里 Implementation-Version 还是 SNAPSHOT，
+         装进 0.2.0 的安装包里会显得是另一个版本。 -->
+    <version>0.2.0</version>
     <name>lingxi</name>
     <description>灵犀：与你心有灵犀的 AI 笔记应用（LangChain4j）</description>
 
