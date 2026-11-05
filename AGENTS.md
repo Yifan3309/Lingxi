@@ -9,7 +9,7 @@ AI-native note app: Spring Boot + LangChain4j RAG backend, Vue 3 SPA, optional T
 ## Layout
 - `src/main/java/org/example/` — backend entrypoint `Application.java`; `web/` REST/SSE, `rag/` ingest/retrieval/graph, `config/` model wiring, `domain/` + `repository/` H2/JPA.
 - `frontend/` — Vue 3 + Vite + Element Plus source. `npm run build` emits into `src/main/resources/static/` (gitignored; never hand-edit).
-- `src-tauri/` — desktop shell. Serves `loading/`, spawns `target/lingxi.jar`, then navigates to `http://127.0.0.1:8080`.
+- `src-tauri/` — desktop shell. Serves `loading/`, spawns `target/lingxi.jar`, then navigates to `http://127.0.0.1:<port>` (8080, or a free 8081–8099 when 8080 is taken).
 - `reranker-service/` — FastAPI sidecar on :8900, default reranker provider. Java falls back to in-process ONNX CPU if unreachable.
 - `postman/` — the real integration test suite. `doc/` (gitignored locally) holds design/decision history.
 
@@ -21,7 +21,7 @@ AI-native note app: Spring Boot + LangChain4j RAG backend, Vue 3 SPA, optional T
 - Reranker: `.\reranker-service\setup.bat` once, then `.\reranker-service\start.bat`.
 - Acceptance tests (backend must be running on 8080):
   `postman collection run "postman/collections/second-brain api" -e "postman/environments/Local.environment.yaml"`
-- Desktop: build `target/lingxi.jar` first; the shell hardcodes `D:\project_learning\LLM_native_notebool` as its home unless `LINGXI_HOME` is set.
+- Desktop: build `target/lingxi.jar` first (`mvn package`), then build the shell **from inside `src-tauri/`** (tauri-cli finds `tauri.conf.json` downward from the CWD). The shell resolves its home as `LINGXI_HOME` > dev project root > install dir, and must never connect to a server it did not spawn (an installed build that finds 8080 taken switches to a free port instead of reusing someone else's backend). Full installer flow: `doc/09-安装包构建流程.md` (doc/ is local-only, not in the repo).
 
 ## Gotchas
 - Unit tests live in `src/test/java` (JUnit 5 + AssertJ + Mockito, ~85 cases, `mvn test` in seconds). They are deliberately **complementary to Postman, not a duplicate**: unit tests own pure logic edges (chunking, folder-path normalization, attachment budgets), degradation paths (reranker sidecar down, LLM 401, ingest failure), and safety boundaries (loopback-only local files). Postman owns the HTTP contract and end-to-end flows. Don't re-assert HTTP-level behavior in unit tests. Tests must stay offline — no Spring context, no H2, no `models/`, no LLM key. Some Postman requests call a real LLM and need a valid key.

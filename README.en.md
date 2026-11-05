@@ -75,6 +75,19 @@ cd frontend && npm ci && npm run build && cd .. && mvn package
 java -jar target/lingxi.jar   # open http://localhost:8080 for the full app
 ```
 
+### Desktop installer (optional)
+
+```bash
+# requires target/lingxi.jar from the mvn package step above
+cd src-tauri && node ../frontend/node_modules/@tauri-apps/cli/tauri.js build
+# → src-tauri/target/release/bundle/nsis/*.exe
+```
+
+- Must be run from inside `src-tauri/`: tauri-cli looks for `tauri.conf.json` downward from the current directory
+- **The installer ships no model files** (~1.1 GB): download them from HuggingFace afterwards, following the
+  《模型放置说明.txt》 guide left in the install directory
+- **JDK 21+** is required at runtime (`java` on PATH)
+
 ### Optional components
 
 | Component | Notes | Without it |
